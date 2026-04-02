@@ -89,4 +89,4 @@ If it takes longer than that to set up, that's a problem.
 
 ## What Happens Next
 
-We review every submission on a rolling basis and move fast. If your submission is great, you'll hear from us within days for a founder call. No news after 7 days means no. Good luck.
+We review submissions on a rolling basis and respond to every single one within a few days. Good luck.
