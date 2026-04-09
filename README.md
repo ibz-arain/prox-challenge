@@ -11,7 +11,7 @@ Built for the [Prox Founding Engineer Challenge](https://useprox.com/join/challe
 ```bash
 git clone https://github.com/ibz-arain/prox-challenge.git
 cd prox-challenge
-cp .env.example .env          # Add your ANTHROPIC_API_KEY
+cp .env.example .env          # Add OPENROUTER_API_KEY (or ANTHROPIC_API_KEY later)
 npm install
 npm run dev                    # Opens at http://localhost:3000
 ```
@@ -21,6 +21,25 @@ That's it. The search index auto-builds on your first query. Alternatively, pre-
 ```bash
 npm run ingest                 # Extracts text from PDFs, builds search index
 ```
+
+## LLM configuration (OpenRouter or Anthropic)
+
+The app uses `@anthropic-ai/sdk` against either **OpenRouter** (`https://openrouter.ai/api`) or **Anthropic** directly. Same tools and response handling in both cases.
+
+**Quick setup:** put your [OpenRouter](https://openrouter.ai/settings/keys) key in `OPENROUTER_API_KEY`. Keys look like `sk-or-v1-...` — this is **not** an OpenAI key (`sk-proj-...` will not work here).
+
+**Auto routing:** if `OPENROUTER_API_KEY` is set, it is used by default. If you also add `ANTHROPIC_API_KEY`, OpenRouter still wins unless you set `LLM_PROVIDER=anthropic`.
+
+| Variable | Purpose |
+|----------|---------|
+| `OPENROUTER_API_KEY` | Preferred for local dev; billed via OpenRouter |
+| `ANTHROPIC_API_KEY` | Direct Anthropic when you have credits |
+| `LLM_PROVIDER` | Optional: `openrouter` or `anthropic` to force one |
+| `LLM_MAX_TOKENS` | Optional; default **2048** per completion (OpenRouter free/low credits often fail at 4096) |
+
+Model IDs are fixed in code for now (OpenRouter: Claude Sonnet slug; Anthropic: `claude-sonnet-4-20250514`).
+
+**Structured outputs:** Tool results and citations come from this app. `<artifact>` tags depend on the model following the prompt; Claude models behave most reliably.
 
 ## Why This Product Is Hard
 

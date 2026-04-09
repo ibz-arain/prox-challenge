@@ -1,4 +1,5 @@
-import Anthropic from "@anthropic-ai/sdk";
+import type Anthropic from "@anthropic-ai/sdk";
+import { getLlmClientAndModel, getLlmMaxOutputTokens } from "./client";
 import { SYSTEM_PROMPT } from "./system-prompt";
 import { toolDefinitions, executeToolCall } from "./tools";
 import type { Citation, Artifact, PageImage, ChatMessage } from "../types";
@@ -37,14 +38,8 @@ export async function runAgent(
   messages: ChatMessage[],
   onTextDelta?: (text: string) => void
 ): Promise<AgentResult> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    throw new Error(
-      "ANTHROPIC_API_KEY not set. Copy .env.example to .env and add your key."
-    );
-  }
-
-  const client = new Anthropic({ apiKey });
+  const { client, model } = getLlmClientAndModel();
+  const maxTokens = getLlmMaxOutputTokens();
 
   const anthropicMessages: Anthropic.Messages.MessageParam[] = messages.map(
     (m) => {
@@ -77,8 +72,8 @@ export async function runAgent(
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
     const response = await client.messages.create({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 4096,
+      model,
+      max_tokens: maxTokens,
       system: SYSTEM_PROMPT,
       tools: toolDefinitions,
       messages: anthropicMessages,

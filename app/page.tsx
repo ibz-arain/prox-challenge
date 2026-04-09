@@ -53,7 +53,7 @@ export default function Home() {
           ...newMessages,
           {
             role: "assistant",
-            content: `Sorry, I encountered an error: ${errMsg}. Please make sure your ANTHROPIC_API_KEY is set in .env and the manuals are in the files/ directory.`,
+            content: `Sorry, I encountered an error: ${errMsg}. Check OPENROUTER_API_KEY or ANTHROPIC_API_KEY in .env, and that manuals exist under files/.`,
           },
         ]);
       } finally {
