@@ -1,6 +1,8 @@
 import { readFileSync, readdirSync } from "fs";
 import { join, basename } from "path";
 import type { PageData } from "../types";
+import { getCreateCanvas } from "./canvas-factory";
+import { extractPageTextWithVision } from "./vision-extractor";
 
 let pdfjsLib: typeof import("pdfjs-dist") | null = null;
 
@@ -85,24 +87,95 @@ function detectContentType(
 
 export async function parsePdfFile(
   filePath: string
-): Promise<Omit<PageData, "id">[]> {
+): Promise<{
+  pages: Omit<PageData, "id">[];
+  totalPages: number;
+  textExtractedPages: number;
+  visionExtractedPages: number;
+  visionFailedPages: number;
+}> {
   const pdfjs = await getPdfjs();
   const data = new Uint8Array(readFileSync(filePath));
   const doc = await pdfjs.getDocument({ data, useSystemFonts: true }).promise;
   const sourceSlug = basename(filePath, ".pdf");
 
   const pages: Omit<PageData, "id">[] = [];
+  let textExtractedPages = 0;
+  let visionExtractedPages = 0;
+  let visionFailedPages = 0;
+  let canvasUnavailableWarned = false;
+
+  async function renderPageAsBase64Png(
+    page: Awaited<ReturnType<typeof doc.getPage>>
+  ): Promise<string | null> {
+    const createCanvas = await getCreateCanvas();
+    if (!createCanvas) {
+      if (!canvasUnavailableWarned) {
+        console.log(
+          "    Vision fallback skipped: no canvas backend available for PDF page rendering."
+        );
+        canvasUnavailableWarned = true;
+      }
+      return null;
+    }
+
+    const viewport = page.getViewport({ scale: 2.0 });
+    const canvas = createCanvas(viewport.width, viewport.height);
+    const context = canvas.getContext("2d");
+
+    await page.render({
+      canvasContext: context as unknown as CanvasRenderingContext2D,
+      viewport,
+    }).promise;
+
+    return canvas.toBuffer("image/png").toString("base64");
+  }
 
   for (let i = 1; i <= doc.numPages; i++) {
     const page = await doc.getPage(i);
     const content = await page.getTextContent();
-    const text = content.items
+    const parsedText = content.items
       .map((item) => ("str" in item ? item.str : ""))
       .join(" ")
       .replace(/\s+/g, " ")
       .trim();
+    let text = parsedText;
+    let extractedViaVision = false;
+    let extractionMethod: "text" | "vision" = "text";
 
-    if (text.length < 10) continue;
+    if (parsedText.length < 50) {
+      try {
+        const pageBase64Png = await renderPageAsBase64Png(page);
+        if (pageBase64Png) {
+          const visionResult = await extractPageTextWithVision(pageBase64Png);
+          if (visionResult?.text) {
+            text = visionResult.text.replace(/\s+\n/g, "\n").trim();
+            extractedViaVision = true;
+            extractionMethod = "vision";
+            visionExtractedPages++;
+          } else {
+            visionFailedPages++;
+          }
+        } else {
+          visionFailedPages++;
+        }
+      } catch (error) {
+        visionFailedPages++;
+        console.log(`    Vision extraction failed on page ${i}: ${error}`);
+      }
+    } else {
+      textExtractedPages++;
+    }
+
+    if (!text.trim()) {
+      // Keep empty pages out of the index if both text and vision extraction fail.
+      continue;
+    }
+
+    if (!extractedViaVision && parsedText.length < 50) {
+      // Very short text pages still get indexed but are marked as text-only fallback.
+      textExtractedPages++;
+    }
 
     pages.push({
       pageNumber: i,
@@ -114,28 +187,62 @@ export async function parsePdfFile(
       text,
       section: detectSection(text, i),
       contentType: detectContentType(text),
+      extractedViaVision,
+      extractionMethod,
     });
   }
 
-  return pages;
+  return {
+    pages,
+    totalPages: doc.numPages,
+    textExtractedPages,
+    visionExtractedPages,
+    visionFailedPages,
+  };
 }
 
-export async function parseAllPdfs(filesDir: string): Promise<PageData[]> {
+export interface ParseAllPdfsResult {
+  pages: PageData[];
+  totalPagesSeen: number;
+  textExtractedPages: number;
+  visionExtractedPages: number;
+  visionFailedPages: number;
+}
+
+export async function parseAllPdfs(
+  filesDir: string
+): Promise<ParseAllPdfsResult> {
   const files = readdirSync(filesDir).filter((f) => f.endsWith(".pdf"));
   const allPages: PageData[] = [];
+  let totalPagesSeen = 0;
+  let textExtractedPages = 0;
+  let visionExtractedPages = 0;
+  let visionFailedPages = 0;
 
   for (const file of files) {
     const filePath = join(filesDir, file);
     console.log(`  Parsing ${file}...`);
-    const pages = await parsePdfFile(filePath);
-    for (const page of pages) {
+    const result = await parsePdfFile(filePath);
+    totalPagesSeen += result.totalPages;
+    textExtractedPages += result.textExtractedPages;
+    visionExtractedPages += result.visionExtractedPages;
+    visionFailedPages += result.visionFailedPages;
+    for (const page of result.pages) {
       allPages.push({
         ...page,
         id: `${page.source}-p${page.pageNumber}`,
       });
     }
-    console.log(`    -> ${pages.length} pages extracted`);
+    console.log(
+      `    -> ${result.pages.length} pages indexed (${result.textExtractedPages} text, ${result.visionExtractedPages} vision, ${result.visionFailedPages} vision-failed)`
+    );
   }
 
-  return allPages;
+  return {
+    pages: allPages,
+    totalPagesSeen,
+    textExtractedPages,
+    visionExtractedPages,
+    visionFailedPages,
+  };
 }

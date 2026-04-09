@@ -22,12 +22,13 @@ export default function PagePreview({ pageImage }: PagePreviewProps) {
           </span>
         </div>
         <p className="text-xs text-[var(--color-text-muted)]">
-          Page image not available. Run{" "}
-          <code className="px-1 py-0.5 rounded bg-[var(--color-surface-3)] font-mono">
-            npm run ingest
-          </code>{" "}
-          to generate page images.
+          Page image is unavailable for this reference.
         </p>
+        {pageImage.excerpt && (
+          <p className="mt-2 text-xs leading-relaxed text-[var(--color-text)]">
+            {pageImage.excerpt}
+          </p>
+        )}
       </div>
     );
   }
@@ -82,6 +83,10 @@ export default function PagePreview({ pageImage }: PagePreviewProps) {
               src={pageImage.url}
               alt={`${pageImage.sourceLabel} page ${pageImage.pageNumber}`}
               className="max-w-full h-auto rounded-lg"
+              onError={() => {
+                setExpanded(false);
+                setImgError(true);
+              }}
               onClick={(e) => e.stopPropagation()}
             />
           </div>

@@ -8,9 +8,13 @@ import type { ChatMessage } from "@/lib/types";
 
 interface MessageBubbleProps {
   message: ChatMessage;
+  isStreaming?: boolean;
 }
 
-export default function MessageBubble({ message }: MessageBubbleProps) {
+export default function MessageBubble({
+  message,
+  isStreaming = false,
+}: MessageBubbleProps) {
   const isUser = message.role === "user";
 
   return (
@@ -25,7 +29,7 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
         {isUser ? <User size={16} /> : <Bot size={16} />}
       </div>
 
-      <div className={`flex-1 max-w-[85%] ${isUser ? "text-right" : ""}`}>
+      <div className={`flex-1 max-w-[94%] sm:max-w-[85%] ${isUser ? "text-right" : ""}`}>
         {isUser ? (
           <div className="inline-block text-left">
             {message.image && (
@@ -100,6 +104,11 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
               >
                 {message.content}
               </ReactMarkdown>
+              {isStreaming && (
+                <span className="inline-block text-[var(--color-text-muted)] animate-pulse">
+                  ▍
+                </span>
+              )}
             </div>
 
             {message.artifacts?.map((artifact, i) => (

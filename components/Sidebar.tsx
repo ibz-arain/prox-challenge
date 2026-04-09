@@ -26,8 +26,7 @@ const SAMPLE_PROMPTS = [
   },
   {
     label: "TIG polarity setup",
-    prompt:
-      "What polarity setup do I need for TIG welding? Which socket does the ground clamp go in?",
+    prompt: "What polarity setup do I need for TIG welding?",
   },
   {
     label: "Ground clamp socket",
@@ -35,11 +34,11 @@ const SAMPLE_PROMPTS = [
   },
   {
     label: "Settings for mild steel",
-    prompt: 'Help me choose settings for 1/8" mild steel with MIG.',
+    prompt: "Help me choose settings for 1/8 inch mild steel on 240V",
   },
   {
     label: "120V vs 240V",
-    prompt: "What's the difference between using 120V and 240V input?",
+    prompt: "What's the difference between 120V and 240V mode?",
   },
 ];
 
@@ -123,8 +122,8 @@ export default function Sidebar({ onSamplePrompt }: SidebarProps) {
             {status === null
               ? "Checking index..."
               : status.ready
-                ? `${status.totalPages} pages indexed`
-                : "Index not ready — will auto-build on first query"}
+                ? `Ready — ${status.totalPages} pages indexed`
+                : "Building index..."}
           </span>
         </div>
       </div>

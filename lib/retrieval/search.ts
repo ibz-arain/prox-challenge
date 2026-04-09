@@ -33,7 +33,11 @@ async function ensureIndex(): Promise<{
   }
 
   console.log("Auto-ingesting manuals on first request...");
-  const pages = await parseAllPdfs(filesDir);
+  const parseResult = await parseAllPdfs(filesDir);
+  const pages = parseResult.pages;
+  console.log(
+    `Auto-ingest extraction mix: ${parseResult.textExtractedPages} text, ${parseResult.visionExtractedPages} vision, ${parseResult.visionFailedPages} vision-failed`
+  );
   const index = buildIndex(pages);
   saveIndex(index, pages);
 

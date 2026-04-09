@@ -3,6 +3,7 @@ import { searchManual, getPageContent } from "../retrieval/search";
 import { pageImageExists } from "../ingest/page-renderer";
 import type { Citation, PageImage } from "../types";
 import { SOURCE_LABELS } from "../types";
+import { DIAGRAM_CATALOG, DIAGRAM_IDS } from "../diagrams/catalog";
 
 export const toolDefinitions: Anthropic.Messages.Tool[] = [
   {
@@ -73,6 +74,22 @@ export const toolDefinitions: Anthropic.Messages.Tool[] = [
         },
       },
       required: ["page_number"],
+    },
+  },
+  {
+    name: "get_diagram",
+    description:
+      "Return a canonical SVG diagram for common polarity/connection questions. Use this before generating custom SVG for these known scenarios.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        diagram_id: {
+          type: "string",
+          enum: DIAGRAM_IDS,
+          description: "Canonical diagram identifier",
+        },
+      },
+      required: ["diagram_id"],
     },
   },
   {
@@ -177,12 +194,15 @@ export async function executeToolCall(
       const pageNumber = input.page_number as number;
       const source = (input.source as string) || "owner-manual";
       const hasImage = pageImageExists(source, pageNumber);
+      const page = await getPageContent(pageNumber, source);
+      const excerpt = page?.text?.slice(0, 240);
 
       const pageImage: PageImage = {
         pageNumber,
         source,
         sourceLabel: SOURCE_LABELS[source] || source,
         url: `/api/pages/${source}/${pageNumber}`,
+        excerpt: excerpt ? `${excerpt}${page.text.length > 240 ? "..." : ""}` : "",
       };
 
       return {
@@ -240,6 +260,20 @@ export async function executeToolCall(
           sourceLabel: SOURCE_LABELS[r.source] || r.sourceLabel,
           excerpt: r.excerpt,
         })),
+      };
+    }
+
+    case "get_diagram": {
+      const diagramId = input.diagram_id as string;
+      const svg = DIAGRAM_CATALOG[diagramId];
+      if (!svg) {
+        return {
+          content: `Unknown diagram_id "${diagramId}". Available IDs: ${DIAGRAM_IDS.join(", ")}`,
+        };
+      }
+
+      return {
+        content: `Canonical diagram "${diagramId}" SVG:\n${svg}\n\nUse this SVG directly inside an <artifact type="svg-diagram"> block.`,
       };
     }
 

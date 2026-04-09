@@ -18,6 +18,8 @@ export function buildIndex(pages: PageData[]): MiniSearch<PageData> {
       "text",
       "section",
       "contentType",
+      "extractedViaVision",
+      "extractionMethod",
     ],
     searchOptions: {
       boost: { text: 2, section: 1.5 },
@@ -64,6 +66,8 @@ export function loadIndex(): MiniSearch<PageData> | null {
         "text",
         "section",
         "contentType",
+        "extractedViaVision",
+        "extractionMethod",
       ],
     });
   } catch {

@@ -6,6 +6,8 @@ export interface PageData {
   text: string;
   section: string;
   contentType: "text" | "table" | "diagram" | "mixed";
+  extractedViaVision?: boolean;
+  extractionMethod?: "text" | "vision";
 }
 
 export interface SearchResult {
@@ -37,6 +39,7 @@ export interface PageImage {
   source: string;
   sourceLabel: string;
   url: string;
+  excerpt?: string;
 }
 
 export interface ChatMessage {
@@ -50,13 +53,17 @@ export interface ChatMessage {
 
 export interface StreamEvent {
   type:
-    | "text-delta"
+    | "text"
+    | "status"
     | "citations"
     | "artifacts"
-    | "page-images"
+    | "pageImages"
     | "done"
     | "error";
-  data: string;
+  delta?: string;
+  stage?: "searching" | "generating";
+  data?: unknown;
+  error?: string;
 }
 
 export interface IngestStatus {

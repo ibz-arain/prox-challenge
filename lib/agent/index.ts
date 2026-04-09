@@ -1,5 +1,10 @@
 import type Anthropic from "@anthropic-ai/sdk";
-import { getLlmClientAndModel, getLlmMaxOutputTokens } from "./client";
+import {
+  getLlmClientAndModel,
+  getLlmMaxOutputTokens,
+  getOpenRouterClientOrNull,
+  shouldFallbackToOpenRouterAfterAnthropicError,
+} from "./client";
 import { SYSTEM_PROMPT } from "./system-prompt";
 import { toolDefinitions, executeToolCall } from "./tools";
 import type { Citation, Artifact, PageImage, ChatMessage } from "../types";
@@ -36,10 +41,12 @@ function parseArtifacts(text: string): {
 
 export async function runAgent(
   messages: ChatMessage[],
-  onTextDelta?: (text: string) => void
+  onTextDelta?: (text: string) => void | Promise<void>,
+  onStatusChange?: (status: "searching" | "generating") => void | Promise<void>
 ): Promise<AgentResult> {
-  const { client, model } = getLlmClientAndModel();
+  let { client, model, provider } = getLlmClientAndModel();
   const maxTokens = getLlmMaxOutputTokens();
+  let usedOpenRouterBillingFallback = false;
 
   const anthropicMessages: Anthropic.Messages.MessageParam[] = messages.map(
     (m) => {
@@ -70,14 +77,46 @@ export async function runAgent(
   let allPageImages: PageImage[] = [];
   let fullText = "";
 
-  for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-    const response = await client.messages.create({
+  const createAssistantResponse = async () => {
+    const params = {
       model,
       max_tokens: maxTokens,
       system: SYSTEM_PROMPT,
       tools: toolDefinitions,
       messages: anthropicMessages,
-    });
+    };
+    try {
+      return await client.messages.create(params);
+    } catch (err) {
+      if (
+        provider === "anthropic" &&
+        !usedOpenRouterBillingFallback &&
+        shouldFallbackToOpenRouterAfterAnthropicError(err)
+      ) {
+        const or = getOpenRouterClientOrNull();
+        if (or) {
+          usedOpenRouterBillingFallback = true;
+          client = or.client;
+          model = or.model;
+          provider = "openrouter";
+          console.warn(
+            "[agent] Anthropic request failed (credits/billing); retrying via OpenRouter."
+          );
+          return await client.messages.create({
+            ...params,
+            model,
+          });
+        }
+      }
+      throw err;
+    }
+  };
+
+  for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+    if (onStatusChange) {
+      await onStatusChange("generating");
+    }
+    const response = await createAssistantResponse();
 
     const textBlocks: string[] = [];
     const toolUseBlocks: Anthropic.Messages.ToolUseBlock[] = [];
@@ -85,7 +124,9 @@ export async function runAgent(
     for (const block of response.content) {
       if (block.type === "text") {
         textBlocks.push(block.text);
-        if (onTextDelta) onTextDelta(block.text);
+        if (onTextDelta) {
+          await onTextDelta(block.text);
+        }
       } else if (block.type === "tool_use") {
         toolUseBlocks.push(block);
       }
@@ -105,6 +146,9 @@ export async function runAgent(
     });
 
     const toolResults: Anthropic.Messages.ToolResultBlockParam[] = [];
+    if (onStatusChange) {
+      await onStatusChange("searching");
+    }
     for (const toolUse of toolUseBlocks) {
       const result = await executeToolCall(
         toolUse.name,

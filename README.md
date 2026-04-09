@@ -6,12 +6,16 @@ A multimodal AI-powered technical support application for the **Vulcan OmniPro 2
 
 Built for the [Prox Founding Engineer Challenge](https://useprox.com/join/challenge).
 
+## Live Demo
+
+Not deployed yet in this repository snapshot. Run locally with the Quick Start below.
+
 ## Quick Start
 
 ```bash
 git clone https://github.com/ibz-arain/prox-challenge.git
 cd prox-challenge
-cp .env.example .env          # Add OPENROUTER_API_KEY (or ANTHROPIC_API_KEY later)
+cp .env.example .env   # Add your ANTHROPIC_API_KEY
 npm install
 npm run dev                    # Opens at http://localhost:3000
 ```
@@ -22,24 +26,25 @@ That's it. The search index auto-builds on your first query. Alternatively, pre-
 npm run ingest                 # Extracts text from PDFs, builds search index
 ```
 
-## LLM configuration (OpenRouter or Anthropic)
+## LLM configuration (Anthropic first, OpenRouter optional)
 
 The app uses `@anthropic-ai/sdk` against either **OpenRouter** (`https://openrouter.ai/api`) or **Anthropic** directly. Same tools and response handling in both cases.
 
-**Quick setup:** put your [OpenRouter](https://openrouter.ai/settings/keys) key in `OPENROUTER_API_KEY`. Keys look like `sk-or-v1-...` — this is **not** an OpenAI key (`sk-proj-...` will not work here).
+**Quick setup:** put your Anthropic key in `ANTHROPIC_API_KEY` (get one from [Anthropic Console](https://console.anthropic.com/)).
 
-**Auto routing:** if `OPENROUTER_API_KEY` is set, it is used by default. If you also add `ANTHROPIC_API_KEY`, OpenRouter still wins unless you set `LLM_PROVIDER=anthropic`.
+**Auto routing:** if `ANTHROPIC_API_KEY` is set, the app always uses Anthropic directly. If Anthropic key is missing, it falls back to `OPENROUTER_API_KEY`.
 
 | Variable | Purpose |
 |----------|---------|
-| `OPENROUTER_API_KEY` | Preferred for local dev; billed via OpenRouter |
-| `ANTHROPIC_API_KEY` | Direct Anthropic when you have credits |
-| `LLM_PROVIDER` | Optional: `openrouter` or `anthropic` to force one |
+| `ANTHROPIC_API_KEY` | Primary key used for chat + vision ingestion |
+| `OPENROUTER_API_KEY` | Optional fallback/provider alternative |
+| `OPENROUTER_MODEL` | Optional OpenRouter model id (default: `arcee-ai/trinity-large-preview:free`) |
+| `LLM_PROVIDER` | Optional override (`openrouter`) when Anthropic key is absent |
 | `LLM_MAX_TOKENS` | Optional; default **2048** per completion (OpenRouter free/low credits often fail at 4096) |
 
-Model IDs are fixed in code for now (OpenRouter: Claude Sonnet slug; Anthropic: `claude-sonnet-4-20250514`).
+**Models:** When `ANTHROPIC_API_KEY` is set, the app uses **Claude** on Anthropic (`claude-sonnet-4-20250514`). When only OpenRouter is used (or after billing fallback), the default is **Trinity Large Preview (free)** (`arcee-ai/trinity-large-preview:free`), not Claude.
 
-**Structured outputs:** Tool results and citations come from this app. `<artifact>` tags depend on the model following the prompt; Claude models behave most reliably.
+**Structured outputs:** Tool results and citations come from this app. `<artifact>` tags depend on the model following the prompt; **Claude (direct Anthropic)** is most reliable for tools and artifacts. Free OpenRouter models may be weaker—use Anthropic for demos that depend on tool use.
 
 ## Why This Product Is Hard
 
@@ -79,7 +84,7 @@ Key challenges:
               │  3. Tool Execution      │──── search_manual
               │  4. Loop until done     │──── get_page
               │  5. Parse artifacts     │──── get_page_image
-              │  6. Return structured   │──── lookup_specs
+              │  6. Stream SSE events   │──── lookup_specs / get_diagram
               │     response            │
               └────────────┬────────────┘
                            │
@@ -99,7 +104,7 @@ Key challenges:
 | Framework | Next.js 15 (App Router) | Full-stack React with API routes, fast DX |
 | Language | TypeScript (strict) | Type safety across agent/API/frontend |
 | Styling | Tailwind CSS 4 | Rapid, consistent dark-mode UI |
-| AI | Anthropic SDK + Claude Sonnet | Tool use for agentic loop, vision for images |
+| AI | Anthropic SDK (Messages API) | Claude on Anthropic; Trinity Large Preview (free) on OpenRouter by default |
 | PDF Processing | pdfjs-dist (Mozilla pdf.js) | Pure-JS PDF text extraction, no system deps |
 | Search | MiniSearch | Zero-dependency in-memory full-text search |
 | Rendering | react-markdown + custom components | Rich artifact rendering (SVG, tables, flowcharts) |
@@ -115,10 +120,11 @@ Our agent loop implements the same agentic pattern (system prompt → tool calls
 ### Ingestion Pipeline
 
 1. **PDF Parsing**: `pdfjs-dist` extracts text page-by-page from all PDFs in `files/`
-2. **Section Detection**: Heuristics classify each page (safety, setup, specs, troubleshooting, polarity, welding-process, maintenance, parts)
-3. **Content Type Detection**: Pages are tagged as text, table, diagram, or mixed based on line patterns
-4. **Search Index**: MiniSearch builds a TF-IDF/BM25 index with fuzzy matching, prefix search, and field boosting
-5. **Page Images** (optional): If the `canvas` npm package is installed, pages are rendered as PNG thumbnails
+2. **Vision Fallback**: Pages with little/no text (<50 chars) are rendered and sent to Claude Vision for structured extraction (fixes `selection-chart.pdf`)
+3. **Section Detection**: Heuristics classify each page (safety, setup, specs, troubleshooting, polarity, welding-process, maintenance, parts)
+4. **Content Type Detection**: Pages are tagged as text, table, diagram, or mixed based on line patterns
+5. **Search Index**: MiniSearch builds a TF-IDF/BM25 index with fuzzy matching, prefix search, and field boosting
+6. **Page Images**: `npm run ingest` pre-renders critical pages to `public/manual-pages/`; dynamic full-page cache is optional
 
 All processed data is stored in `generated/` (gitignored, auto-built on first query).
 
@@ -157,6 +163,7 @@ The Claude agent follows these principles:
 - **Ask when uncertain** — if the question is ambiguous or evidence is weak, asks a clarifying question
 - **Safety-aware** — includes relevant safety warnings without being preachy
 - **Visual when helpful** — generates SVG diagrams for connection questions, tables for data, flowcharts for troubleshooting
+- **Canonical diagrams first** — for polarity/connection questions, it can call `get_diagram` for consistent, hardcoded SVGs
 - **User-appropriate tone** — assumes a smart garage buyer, not a professional welder
 
 ## Example Prompts
@@ -171,6 +178,20 @@ Try these to explore the agent's capabilities:
 | "Show me which socket the ground clamp goes in" | Page image + diagram |
 | "Help me choose settings for 1/8\" mild steel" | Settings card or configurator widget |
 | "What's the difference between 120V and 240V modes?" | Comparison table with specs |
+
+## Hard Questions the Agent Handles Well
+
+### 1) Process/material/thickness settings lookup
+**Q:** "Help me choose settings for 1/8 inch mild steel on 240V."  
+**A:** Retrieves selection-chart rows (via vision-extracted text), proposes voltage/wire-speed/gas/polarity values in a settings card, and cites exact manual pages.
+
+### 2) Polarity + physical connection correctness
+**Q:** "What polarity do I need for TIG welding?"  
+**A:** Uses canonical TIG polarity SVG (`get_diagram`), explains torch/ground terminal mapping, adds safety warning, cites source page, and shows page evidence.
+
+### 3) Troubleshooting with visual/manual evidence
+**Q:** "I'm getting porosity in my flux-cored welds. What should I check?"  
+**A:** Returns structured checks in priority order (gas, stickout, prep, contamination), optionally flowcharts the decision path, and links troubleshooting pages/photos.
 
 ## Project Structure
 
@@ -213,14 +234,11 @@ Try these to explore the agent's capabilities:
 ## Limitations & Future Improvements
 
 ### Current Limitations
-- **Selection chart PDF is image-only** — pdfjs-dist extracts no text from scanned/image PDFs. The owner's manual and quick start guide work well.
 - **No vector embeddings** — uses keyword-based search (TF-IDF/BM25), not semantic embeddings. Good enough for a 50-page corpus but would benefit from embeddings for nuanced queries.
-- **No streaming** — responses arrive as a complete block after the agent loop finishes (typically 3-8 seconds). Could be improved with SSE streaming.
-- **Page images require canvas** — the optional `canvas` npm package needs system-level Cairo libraries. Without it, the app works but can't show page image previews.
+- **Vision ingestion depends on API access** — if no Anthropic/OpenRouter key is set, image-only pages cannot be vision-extracted.
+- **Dynamic full-page rendering can be unavailable** — static critical page images are still served, and evidence falls back to text excerpts when an image is missing.
 
 ### Future Improvements
-- **Claude Vision for image-only PDFs** — send scanned pages to Claude as images for visual understanding
-- **Streaming responses** — SSE streaming for real-time text output while the agent is still searching
 - **Voice input/output** — natural voice interaction for hands-free use while welding
 - **Persistent conversations** — save and resume chat sessions
 - **Hosted deployment** — Vercel/Railway deployment for zero-setup demo access
@@ -232,7 +250,7 @@ This architecture prioritizes **reviewer experience** and **demo quality** over 
 
 1. **Single app, zero external deps** — no Docker, no databases, no vector stores. Just `npm install` and go.
 2. **Auto-ingestion** — the index builds automatically on first query, so reviewers don't need a separate setup step.
-3. **Purpose-built agent tools** — instead of generic RAG, the agent has domain-specific tools (search_manual, get_page, lookup_specs) that map directly to how a support agent would use a manual.
+3. **Purpose-built agent tools** — instead of generic RAG, the agent has domain-specific tools (`search_manual`, `get_page`, `get_page_image`, `lookup_specs`, `get_diagram`) that map directly to how a support agent would use a manual.
 4. **Rich artifact system** — the artifact tag format lets Claude express answers as the right medium (tables for data, diagrams for spatial concepts, flowcharts for procedures).
 5. **Evidence transparency** — every answer shows its sources, making it easy to verify accuracy and understand the retrieval pipeline.
 

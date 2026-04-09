@@ -2,8 +2,14 @@ import Anthropic from "@anthropic-ai/sdk";
 
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api";
 const DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-20250514";
-/** OpenRouter slug; Claude models preserve tool use + artifact behavior best. */
-const DEFAULT_OPENROUTER_MODEL = "anthropic/claude-sonnet-4.5";
+/** OpenRouter default when no direct Anthropic key — free tier model (not Claude). */
+const DEFAULT_OPENROUTER_MODEL = "arcee-ai/trinity-large-preview:free";
+
+/** Override with OPENROUTER_MODEL in .env if needed. */
+export function resolveOpenRouterModel(): string {
+  const fromEnv = process.env.OPENROUTER_MODEL?.trim();
+  return fromEnv || DEFAULT_OPENROUTER_MODEL;
+}
 
 /** Default output cap: keeps OpenRouter low-credit accounts under typical 402 limits. */
 const DEFAULT_MAX_OUTPUT_TOKENS = 2048;
@@ -25,23 +31,101 @@ export function getLlmMaxOutputTokens(): number {
 
 /**
  * Resolves which backend to use:
- * - LLM_PROVIDER=anthropic | openrouter forces that provider (if key present).
- * - Otherwise: use OpenRouter if OPENROUTER_API_KEY is set, else Anthropic if ANTHROPIC_API_KEY is set.
- * OpenRouter is preferred when both keys exist so local dev works without Anthropic credits.
+ * - If ANTHROPIC_API_KEY is set, always use Anthropic directly.
+ * - Otherwise use OPENROUTER_API_KEY if set.
+ * - LLM_PROVIDER=openrouter can still force OpenRouter when Anthropic key is absent.
  */
 function resolveProvider(): LlmProvider {
-  const explicit = process.env.LLM_PROVIDER?.toLowerCase().trim();
-  if (explicit === "anthropic") return "anthropic";
-  if (explicit === "openrouter") return "openrouter";
-
-  const orKey = process.env.OPENROUTER_API_KEY?.trim();
   const anKey = process.env.ANTHROPIC_API_KEY?.trim();
-  if (orKey) return "openrouter";
+  const orKey = process.env.OPENROUTER_API_KEY?.trim();
+
   if (anKey) return "anthropic";
 
+  const explicit = process.env.LLM_PROVIDER?.toLowerCase().trim();
+  if (explicit === "anthropic") {
+    throw new Error(
+      "LLM_PROVIDER=anthropic but ANTHROPIC_API_KEY is missing. Add ANTHROPIC_API_KEY or remove LLM_PROVIDER."
+    );
+  }
+  if (explicit === "openrouter" && orKey) return "openrouter";
+  if (explicit === "openrouter" && !orKey) {
+    throw new Error(
+      "LLM_PROVIDER=openrouter but OPENROUTER_API_KEY is missing. Add OPENROUTER_API_KEY or remove LLM_PROVIDER."
+    );
+  }
+
+  if (orKey) return "openrouter";
+
   throw new Error(
-    "No LLM API key found. Add OPENROUTER_API_KEY to .env (get one at https://openrouter.ai/settings/keys), or add ANTHROPIC_API_KEY for direct Anthropic."
+    "No LLM API key found. Add ANTHROPIC_API_KEY to .env (required for reviewer setup), or add OPENROUTER_API_KEY as an optional fallback."
   );
+}
+
+function errorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  return String(err);
+}
+
+/**
+ * Pulls a human-readable message from Anthropic/OpenRouter JSON error bodies
+ * (e.g. "400 {\"type\":\"error\",\"error\":{\"message\":\"...\"}}").
+ */
+export function formatApiErrorForUser(err: unknown): string {
+  const raw = errorMessage(err);
+  const brace = raw.indexOf("{");
+  if (brace !== -1) {
+    try {
+      const parsed = JSON.parse(raw.slice(brace)) as {
+        error?: { message?: string };
+        message?: string;
+      };
+      const nested = parsed?.error?.message ?? parsed?.message;
+      if (typeof nested === "string" && nested.trim()) {
+        return nested.trim();
+      }
+    } catch {
+      /* keep raw */
+    }
+  }
+  return raw;
+}
+
+/**
+ * When Anthropic returns billing / credit errors, retry via OpenRouter if configured.
+ */
+export function getOpenRouterClientOrNull(): {
+  client: Anthropic;
+  model: string;
+} | null {
+  const apiKey = process.env.OPENROUTER_API_KEY?.trim();
+  if (!apiKey) return null;
+  return {
+    client: new Anthropic({
+      apiKey,
+      baseURL: OPENROUTER_BASE_URL,
+    }),
+    model: resolveOpenRouterModel(),
+  };
+}
+
+export function shouldFallbackToOpenRouterAfterAnthropicError(
+  err: unknown
+): boolean {
+  if (!process.env.OPENROUTER_API_KEY?.trim()) return false;
+  const msg = errorMessage(err).toLowerCase();
+  if (msg.includes("credit balance")) return true;
+  if (msg.includes("too low") && msg.includes("anthropic")) return true;
+  if (msg.includes("billing")) return true;
+  if (msg.includes("payment_required")) return true;
+  if (msg.includes("insufficient_quota")) return true;
+  if (typeof err === "object" && err !== null && "status" in err) {
+    const st = (err as { status?: number }).status;
+    if (st === 402) return true;
+    if (st === 400 && (msg.includes("credit") || msg.includes("balance"))) {
+      return true;
+    }
+  }
+  return false;
 }
 
 export function getLlmClientAndModel(): {
@@ -64,7 +148,7 @@ export function getLlmClientAndModel(): {
     });
     return {
       client,
-      model: DEFAULT_OPENROUTER_MODEL,
+      model: resolveOpenRouterModel(),
       provider: "openrouter",
     };
   }
