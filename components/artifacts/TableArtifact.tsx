@@ -39,7 +39,7 @@ export default function TableArtifact({ title, content }: TableArtifactProps) {
           {title}
         </div>
         <div className="p-4">
-          <pre className="text-sm whitespace-pre-wrap text-[var(--color-text-muted)]">
+          <pre className="text-sm whitespace-pre-wrap text-neutral-400 leading-relaxed">
             {content}
           </pre>
         </div>
@@ -60,7 +60,7 @@ export default function TableArtifact({ title, content }: TableArtifactProps) {
               {table.headers.map((h, i) => (
                 <th
                   key={i}
-                  className="px-4 py-2.5 text-left font-semibold bg-[var(--color-surface-2)] border-b border-[var(--color-border)] text-[var(--color-text)]"
+                  className="px-4 py-2.5 text-left font-semibold bg-neutral-800/80 border-b border-neutral-700 text-neutral-100"
                 >
                   {h}
                 </th>
@@ -71,12 +71,12 @@ export default function TableArtifact({ title, content }: TableArtifactProps) {
             {table.rows.map((row, ri) => (
               <tr
                 key={ri}
-                className="border-b border-[var(--color-border)] hover:bg-[var(--color-surface-2)] transition-colors"
+                className="border-b border-neutral-800 hover:bg-neutral-800/40 transition-colors duration-500 ease-out"
               >
                 {row.map((cell, ci) => (
                   <td
                     key={ci}
-                    className="px-4 py-2 text-[var(--color-text-muted)]"
+                    className="px-4 py-2 text-neutral-400 leading-relaxed"
                   >
                     {cell}
                   </td>

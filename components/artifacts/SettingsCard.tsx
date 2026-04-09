@@ -18,7 +18,7 @@ export default function SettingsCard({ title, content }: SettingsCardProps) {
           <Settings size={14} />
           {title}
         </div>
-        <div className="p-4 text-sm">{content}</div>
+        <div className="p-4 text-sm text-neutral-300">{content}</div>
       </div>
     );
   }
@@ -49,13 +49,13 @@ export default function SettingsCard({ title, content }: SettingsCardProps) {
         <Settings size={14} />
         {title}
       </div>
-      <div className="divide-y divide-[var(--color-border)]">
+      <div className="divide-y divide-neutral-800">
         {entries.map(([key, value]) => (
-          <div key={key} className="flex items-center px-4 py-2.5">
-            <span className="text-xs font-medium text-[var(--color-text-muted)] w-40 flex-shrink-0">
+          <div key={key} className="flex items-center px-4 py-2.5 gap-3">
+            <span className="text-xs font-medium text-neutral-500 w-40 flex-shrink-0">
               {labelMap[key] || key}
             </span>
-            <span className="text-sm font-mono text-[var(--color-text)]">
+            <span className="text-sm font-mono text-neutral-200 leading-relaxed">
               {value}
             </span>
           </div>

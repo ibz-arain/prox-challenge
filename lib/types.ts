@@ -39,10 +39,12 @@ export interface PageImage {
   source: string;
   sourceLabel: string;
   url: string;
+  imageUrl?: string;
   excerpt?: string;
 }
 
 export interface ChatMessage {
+  id?: string;
   role: "user" | "assistant";
   content: string;
   image?: string;
@@ -53,16 +55,16 @@ export interface ChatMessage {
 
 export interface StreamEvent {
   type:
-    | "text"
+    | "text_delta"
     | "status"
-    | "citations"
-    | "artifacts"
-    | "pageImages"
+    | "citation"
+    | "artifact"
+    | "page_image"
     | "done"
     | "error";
   delta?: string;
-  stage?: "searching" | "generating";
-  data?: unknown;
+  message?: string;
+  data?: Citation | Artifact | PageImage;
   error?: string;
 }
 

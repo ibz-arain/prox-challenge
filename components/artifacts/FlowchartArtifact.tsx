@@ -43,8 +43,8 @@ export default function FlowchartArtifact({
           <GitBranch size={14} />
           {title}
         </div>
-        <div className="p-4 text-sm text-[var(--color-text-muted)]">
-          <pre className="whitespace-pre-wrap">{content}</pre>
+        <div className="p-4 text-sm text-neutral-400">
+          <pre className="whitespace-pre-wrap leading-relaxed">{content}</pre>
         </div>
       </div>
     );
@@ -55,10 +55,10 @@ export default function FlowchartArtifact({
     : null;
 
   const colorMap = {
-    start: "border-[var(--color-accent)] bg-[var(--color-accent)]/10",
-    decision: "border-[var(--color-warning)] bg-[var(--color-warning)]/10",
-    action: "border-[var(--color-success)] bg-[var(--color-success)]/10",
-    end: "border-[var(--color-text-muted)] bg-[var(--color-surface-2)]",
+    start: "border-brand bg-brand/10 ring-1 ring-brand/25 text-neutral-100",
+    decision: "border-orange-500 bg-orange-950/40 ring-1 ring-orange-500/25 text-neutral-100",
+    action: "border-green-600 bg-green-950/40 ring-1 ring-green-600/25 text-neutral-100",
+    end: "border-neutral-600 bg-neutral-800 ring-1 ring-neutral-700 text-neutral-200",
   };
 
   return (
@@ -68,16 +68,18 @@ export default function FlowchartArtifact({
         {title}
         {!currentStep && (
           <button
+            type="button"
             onClick={() => setCurrentStep(steps[0]?.id ?? null)}
-            className="ml-auto text-xs px-2 py-1 rounded bg-[var(--color-accent)] text-white hover:bg-[var(--color-accent-hover)] transition-colors"
+            className="ml-auto text-xs font-medium px-3 py-1.5 rounded-lg bg-neutral-950 text-white shadow-sm ring-1 ring-neutral-800 transition-colors duration-500 ease-out hover:bg-brand focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
           >
             Start Interactive Mode
           </button>
         )}
         {currentStep && (
           <button
+            type="button"
             onClick={() => setCurrentStep(null)}
-            className="ml-auto text-xs px-2 py-1 rounded bg-[var(--color-surface-3)] text-[var(--color-text-muted)] hover:bg-[var(--color-border)] transition-colors"
+            className="ml-auto text-xs font-medium px-3 py-1.5 rounded-lg border border-neutral-700 bg-neutral-900 text-neutral-300 shadow-sm transition-colors duration-500 ease-out hover:border-brand/40 hover:bg-brand/10 focus:outline-none focus-visible:ring-1 focus-visible:ring-brand/25"
           >
             Show All Steps
           </button>
@@ -95,16 +97,18 @@ export default function FlowchartArtifact({
               <div className="flex gap-3">
                 {activeStep.yes && (
                   <button
+                    type="button"
                     onClick={() => setCurrentStep(activeStep.yes!)}
-                    className="flex-1 px-4 py-2 rounded-lg bg-[var(--color-success)]/20 border border-[var(--color-success)] text-sm font-medium hover:bg-[var(--color-success)]/30 transition-colors"
+                    className="flex-1 px-4 py-2 rounded-xl border border-green-600/50 bg-green-950/50 text-sm font-medium text-green-300 transition-colors duration-500 ease-out hover:bg-green-900/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-green-500/30"
                   >
                     Yes
                   </button>
                 )}
                 {activeStep.no && (
                   <button
+                    type="button"
                     onClick={() => setCurrentStep(activeStep.no!)}
-                    className="flex-1 px-4 py-2 rounded-lg bg-[var(--color-danger)]/20 border border-[var(--color-danger)] text-sm font-medium hover:bg-[var(--color-danger)]/30 transition-colors"
+                    className="flex-1 px-4 py-2 rounded-xl border border-red-600/50 bg-red-950/50 text-sm font-medium text-red-300 transition-colors duration-500 ease-out hover:bg-red-900/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500/30"
                   >
                     No
                   </button>
@@ -113,16 +117,18 @@ export default function FlowchartArtifact({
             )}
             {activeStep.next && (
               <button
+                type="button"
                 onClick={() => setCurrentStep(activeStep.next!)}
-                className="w-full px-4 py-2 rounded-lg bg-[var(--color-surface-3)] border border-[var(--color-border)] text-sm font-medium hover:bg-[var(--color-border)] transition-colors flex items-center justify-center gap-2"
+                className="w-full px-4 py-2 rounded-xl border border-neutral-700 bg-neutral-900 text-sm font-medium text-neutral-200 shadow-sm transition-colors duration-500 ease-out hover:border-brand/35 hover:bg-brand/10 flex items-center justify-center gap-2 focus:outline-none focus-visible:ring-1 focus-visible:ring-brand/25"
               >
-                Next <ChevronRight size={14} />
+                Next <ChevronRight size={14} strokeWidth={2} />
               </button>
             )}
             {activeStep.type === "end" && (
               <button
+                type="button"
                 onClick={() => setCurrentStep(steps[0]?.id ?? null)}
-                className="w-full px-4 py-2 rounded-lg bg-[var(--color-accent)]/20 border border-[var(--color-accent)] text-sm font-medium hover:bg-[var(--color-accent)]/30 transition-colors"
+                className="w-full px-4 py-2 rounded-xl bg-neutral-950 text-white text-sm font-medium shadow-sm ring-1 ring-neutral-800 transition-colors duration-500 ease-out hover:bg-brand focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
               >
                 Start Over
               </button>
@@ -131,7 +137,7 @@ export default function FlowchartArtifact({
         ) : (
           steps.map((step, i) => (
             <div key={step.id} className="flex items-start gap-3">
-              <div className="flex-shrink-0 w-6 h-6 rounded-full bg-[var(--color-surface-3)] flex items-center justify-center text-xs font-mono text-[var(--color-text-muted)]">
+              <div className="flex-shrink-0 w-6 h-6 rounded-full bg-neutral-800 flex items-center justify-center text-xs font-mono text-neutral-400 ring-1 ring-neutral-700">
                 {i + 1}
               </div>
               <div
@@ -139,7 +145,7 @@ export default function FlowchartArtifact({
               >
                 <span className="font-medium">{step.text}</span>
                 {step.type === "decision" && (
-                  <span className="text-xs text-[var(--color-text-muted)] ml-2">
+                  <span className="text-xs text-neutral-500 ml-2 font-medium">
                     (Decision)
                   </span>
                 )}

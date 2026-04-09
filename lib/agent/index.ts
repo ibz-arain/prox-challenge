@@ -8,6 +8,7 @@ import {
 import { SYSTEM_PROMPT } from "./system-prompt";
 import { toolDefinitions, executeToolCall } from "./tools";
 import type { Citation, Artifact, PageImage, ChatMessage } from "../types";
+import { SOURCE_LABELS } from "../types";
 
 const MAX_TOOL_ROUNDS = 6;
 
@@ -17,6 +18,19 @@ interface AgentResult {
   artifacts: Artifact[];
   pageImages: PageImage[];
 }
+
+interface RunAgentOptions {
+  onStatus?: (message: string) => void | Promise<void>;
+  onTextDelta?: (text: string) => void | Promise<void>;
+  onCitation?: (citation: Citation) => void | Promise<void>;
+  onArtifact?: (artifact: Artifact) => void | Promise<void>;
+  onPageImage?: (pageImage: PageImage) => void | Promise<void>;
+}
+
+type CreateResponseOptions = {
+  includeTools: boolean;
+  streamText: boolean;
+};
 
 function parseArtifacts(text: string): {
   cleanText: string;
@@ -41,9 +55,9 @@ function parseArtifacts(text: string): {
 
 export async function runAgent(
   messages: ChatMessage[],
-  onTextDelta?: (text: string) => void | Promise<void>,
-  onStatusChange?: (status: "searching" | "generating") => void | Promise<void>
+  options: RunAgentOptions = {}
 ): Promise<AgentResult> {
+  const { onStatus, onTextDelta, onCitation, onArtifact, onPageImage } = options;
   let { client, model, provider } = getLlmClientAndModel();
   const maxTokens = getLlmMaxOutputTokens();
   let usedOpenRouterBillingFallback = false;
@@ -73,20 +87,59 @@ export async function runAgent(
     }
   );
 
-  let allCitations: Citation[] = [];
-  let allPageImages: PageImage[] = [];
+  const allCitations: Citation[] = [];
+  const allPageImages: PageImage[] = [];
   let fullText = "";
+  const seenCitationKeys = new Set<string>();
+  const seenPageImageKeys = new Set<string>();
 
-  const createAssistantResponse = async () => {
-    const params = {
-      model,
+  const streamAssistantResponse = async (
+    activeClient: Anthropic,
+    activeModel: string,
+    requestOptions: CreateResponseOptions
+  ) => {
+    const params: {
+      model: string;
+      max_tokens: number;
+      system: string;
+      messages: Anthropic.Messages.MessageParam[];
+      tools?: Anthropic.Messages.Tool[];
+    } = {
+      model: activeModel,
       max_tokens: maxTokens,
       system: SYSTEM_PROMPT,
-      tools: toolDefinitions,
       messages: anthropicMessages,
     };
+    if (requestOptions.includeTools) {
+      params.tools = toolDefinitions;
+    }
+
+    const messagesApi = activeClient.messages;
+    const streamFn = messagesApi.stream as
+      | ((request: typeof params) => {
+          on: (event: "text", cb: (deltaText: string) => void) => void;
+          finalMessage: () => Promise<Anthropic.Messages.Message>;
+        })
+      | undefined;
+
+    // Must call as messagesApi.stream(params) so `this` stays bound; detached calls break
+    // MessageStream.createMessage(this, ...) and yield "reading 'create'" on undefined.
+    if (requestOptions.streamText && typeof streamFn === "function") {
+      const messageStream = streamFn.call(messagesApi, params);
+      if (onTextDelta) {
+        messageStream.on("text", (deltaText: string) => {
+          void onTextDelta(deltaText);
+        });
+      }
+      return await messageStream.finalMessage();
+    }
+
+    return await messagesApi.create(params);
+  };
+
+  const createAssistantResponse = async (requestOptions: CreateResponseOptions) => {
     try {
-      return await client.messages.create(params);
+      return await streamAssistantResponse(client, model, requestOptions);
     } catch (err) {
       if (
         provider === "anthropic" &&
@@ -102,41 +155,87 @@ export async function runAgent(
           console.warn(
             "[agent] Anthropic request failed (credits/billing); retrying via OpenRouter."
           );
-          return await client.messages.create({
-            ...params,
-            model,
-          });
+          return await streamAssistantResponse(client, model, requestOptions);
         }
       }
       throw err;
     }
   };
 
-  for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-    if (onStatusChange) {
-      await onStatusChange("generating");
+  const getToolStatusMessage = (
+    toolName: string,
+    toolInput: Record<string, unknown>
+  ): string | null => {
+    switch (toolName) {
+      case "search_manual": {
+        const query = String(toolInput.query ?? "query");
+        return `Searching manual for '${query}'...`;
+      }
+      case "get_page": {
+        const pageNumber = Number(toolInput.page_number ?? 0);
+        const source = String(toolInput.source ?? "owner-manual");
+        const sourceLabel = SOURCE_LABELS[source] ?? source;
+        return `Reading ${sourceLabel} page ${pageNumber}...`;
+      }
+      case "get_page_image": {
+        const pageNumber = Number(toolInput.page_number ?? 0);
+        return `Pulling diagram from page ${pageNumber}...`;
+      }
+      case "get_diagram": {
+        const diagramName = String(toolInput.diagram_id ?? "requested");
+        return `Loading ${diagramName} diagram...`;
+      }
+      case "lookup_specs": {
+        const query = String(toolInput.spec_type ?? "requested");
+        return `Looking up specs for ${query}...`;
+      }
+      default:
+        return null;
     }
-    const response = await createAssistantResponse();
+  };
 
-    const textBlocks: string[] = [];
+  const getToolCompleteStatusMessage = (
+    toolName: string,
+    result: Awaited<ReturnType<typeof executeToolCall>>
+  ): string | null => {
+    if (toolName !== "search_manual") return null;
+    const citations = result.citations ?? [];
+    if (!citations.length) {
+      return "Found 0 relevant pages — reading page 1...";
+    }
+    const topPage = citations[0]?.pageNumber ?? 1;
+    return `Found ${citations.length} relevant pages — reading page ${topPage}...`;
+  };
+
+  const emitCitation = async (citation: Citation) => {
+    const key = `${citation.source}:${citation.pageNumber}`;
+    if (seenCitationKeys.has(key)) return;
+    seenCitationKeys.add(key);
+    allCitations.push(citation);
+  };
+
+  const emitPageImage = async (pageImage: PageImage) => {
+    const key = `${pageImage.source}:${pageImage.pageNumber}`;
+    if (seenPageImageKeys.has(key)) return;
+    seenPageImageKeys.add(key);
+    allPageImages.push(pageImage);
+  };
+
+  for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+    const response = await createAssistantResponse({
+      includeTools: true,
+      streamText: false,
+    });
+
     const toolUseBlocks: Anthropic.Messages.ToolUseBlock[] = [];
 
     for (const block of response.content) {
-      if (block.type === "text") {
-        textBlocks.push(block.text);
-        if (onTextDelta) {
-          await onTextDelta(block.text);
-        }
-      } else if (block.type === "tool_use") {
+      if (block.type === "tool_use") {
         toolUseBlocks.push(block);
       }
     }
 
-    if (textBlocks.length > 0) {
-      fullText += textBlocks.join("");
-    }
-
-    if (response.stop_reason === "end_turn" || toolUseBlocks.length === 0) {
+    if (toolUseBlocks.length === 0) {
       break;
     }
 
@@ -146,20 +245,30 @@ export async function runAgent(
     });
 
     const toolResults: Anthropic.Messages.ToolResultBlockParam[] = [];
-    if (onStatusChange) {
-      await onStatusChange("searching");
-    }
     for (const toolUse of toolUseBlocks) {
+      const input = toolUse.input as Record<string, unknown>;
+      const statusMessage = getToolStatusMessage(toolUse.name, input);
+      if (statusMessage && onStatus) {
+        await onStatus(statusMessage);
+      }
       const result = await executeToolCall(
         toolUse.name,
-        toolUse.input as Record<string, unknown>
+        input
       );
+      const completeStatus = getToolCompleteStatusMessage(toolUse.name, result);
+      if (completeStatus && onStatus) {
+        await onStatus(completeStatus);
+      }
 
       if (result.citations) {
-        allCitations.push(...result.citations);
+        for (const citation of result.citations) {
+          await emitCitation(citation);
+        }
       }
       if (result.pageImages) {
-        allPageImages.push(...result.pageImages);
+        for (const pageImage of result.pageImages) {
+          await emitPageImage(pageImage);
+        }
       }
 
       toolResults.push({
@@ -175,25 +284,42 @@ export async function runAgent(
     });
   }
 
-  const { cleanText, artifacts } = parseArtifacts(fullText);
+  if (onStatus) {
+    await onStatus("Synthesizing answer...");
+  }
+  const finalResponse = await createAssistantResponse({
+    includeTools: false,
+    streamText: true,
+  });
+  const finalTextBlocks: string[] = [];
+  for (const block of finalResponse.content) {
+    if (block.type === "text") {
+      finalTextBlocks.push(block.text);
+    }
+  }
+  fullText += finalTextBlocks.join("");
 
-  const uniqueCitations = allCitations.filter(
-    (c, i, arr) =>
-      arr.findIndex(
-        (x) => x.pageNumber === c.pageNumber && x.source === c.source
-      ) === i
-  );
-  const uniquePageImages = allPageImages.filter(
-    (p, i, arr) =>
-      arr.findIndex(
-        (x) => x.pageNumber === p.pageNumber && x.source === p.source
-      ) === i
-  );
+  const { cleanText, artifacts } = parseArtifacts(fullText);
+  if (onCitation) {
+    for (const citation of allCitations) {
+      await onCitation(citation);
+    }
+  }
+  if (onArtifact) {
+    for (const artifact of artifacts) {
+      await onArtifact(artifact);
+    }
+  }
+  if (onPageImage) {
+    for (const pageImage of allPageImages) {
+      await onPageImage(pageImage);
+    }
+  }
 
   return {
     text: cleanText,
-    citations: uniqueCitations,
+    citations: allCitations,
     artifacts,
-    pageImages: uniquePageImages,
+    pageImages: allPageImages,
   };
 }

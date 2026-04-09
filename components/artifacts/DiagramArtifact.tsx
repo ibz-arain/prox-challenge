@@ -21,8 +21,8 @@ export default function DiagramArtifact({
           <GitBranch size={14} />
           {title}
         </div>
-        <div className="p-4 text-sm text-[var(--color-text-muted)]">
-          <pre className="whitespace-pre-wrap">{content}</pre>
+        <div className="p-4 text-sm text-neutral-400">
+          <pre className="whitespace-pre-wrap leading-relaxed">{content}</pre>
         </div>
       </div>
     );
@@ -35,7 +35,7 @@ export default function DiagramArtifact({
         {title}
       </div>
       <div
-        className="p-4 flex justify-center bg-[var(--color-surface)] [&_svg]:max-w-full [&_svg]:h-auto"
+        className="p-4 flex justify-center bg-neutral-900/50 [&_svg]:max-w-full [&_svg]:h-auto"
         dangerouslySetInnerHTML={{ __html: svgContent }}
       />
     </div>

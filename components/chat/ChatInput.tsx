@@ -1,14 +1,21 @@
 "use client";
 
-import { useState, useRef, type KeyboardEvent } from "react";
+import { useEffect, useState, useRef, type KeyboardEvent } from "react";
 import { Send, ImagePlus, X, Loader2 } from "lucide-react";
 
 interface ChatInputProps {
   onSend: (message: string, image?: string) => void;
   disabled?: boolean;
+  pendingPrompt?: string | null;
+  onPendingPromptHandled?: () => void;
 }
 
-export default function ChatInput({ onSend, disabled }: ChatInputProps) {
+export default function ChatInput({
+  onSend,
+  disabled,
+  pendingPrompt,
+  onPendingPromptHandled,
+}: ChatInputProps) {
   const [text, setText] = useState("");
   const [image, setImage] = useState<string | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -39,6 +46,14 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
+  useEffect(() => {
+    if (!pendingPrompt || disabled) return;
+    setText(pendingPrompt);
+    onSend(pendingPrompt);
+    setText("");
+    onPendingPromptHandled?.();
+  }, [pendingPrompt, disabled, onSend, onPendingPromptHandled]);
+
   const handleKeyDown = (e: KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -47,36 +62,39 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
   };
 
   return (
-    <div className="border-t border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+    <div className="border-t border-neutral-800 bg-black/50 px-4 py-4">
       {imagePreview && (
         <div className="mb-3 relative inline-block">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={imagePreview}
             alt="Upload preview"
-            className="h-16 rounded-lg border border-[var(--color-border)]"
+            className="h-16 rounded-xl border border-neutral-800 shadow-sm"
           />
           <button
+            type="button"
             onClick={() => {
               setImage(null);
               setImagePreview(null);
               if (fileInputRef.current) fileInputRef.current.value = "";
             }}
-            className="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-[var(--color-danger)] text-white flex items-center justify-center hover:bg-red-600 transition-colors"
+            className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-red-600 text-white flex items-center justify-center shadow-sm transition-colors duration-500 ease-out hover:bg-red-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40"
+            aria-label="Remove image"
           >
-            <X size={10} />
+            <X size={12} strokeWidth={2.5} />
           </button>
         </div>
       )}
 
       <div className="flex items-end gap-2">
         <button
+          type="button"
           onClick={() => fileInputRef.current?.click()}
           disabled={disabled}
-          className="flex-shrink-0 p-2.5 rounded-lg border border-[var(--color-border)] text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-2)] transition-colors disabled:opacity-50"
+          className="flex-shrink-0 p-3 rounded-xl border border-neutral-800 bg-neutral-900 text-neutral-500 shadow-sm transition-colors duration-500 ease-out hover:border-brand/35 hover:text-neutral-200 hover:bg-brand/10 focus:outline-none focus-visible:border-brand/45 focus-visible:ring-1 focus-visible:ring-brand/25 disabled:opacity-60"
           title="Upload an image"
         >
-          <ImagePlus size={18} />
+          <ImagePlus size={18} strokeWidth={2} />
         </button>
         <input
           ref={fileInputRef}
@@ -86,7 +104,7 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
           className="hidden"
         />
 
-        <div className="flex-1 relative">
+        <div className="flex-1 min-w-0 focus-within:shadow-md rounded-xl transition-shadow duration-500 ease-out focus-within:ring-1 focus-within:ring-brand/20">
           <textarea
             ref={textAreaRef}
             value={text}
@@ -95,7 +113,7 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
             disabled={disabled}
             placeholder="Ask about the OmniPro 220..."
             rows={1}
-            className="w-full px-4 py-2.5 rounded-lg bg-[var(--color-surface-2)] border border-[var(--color-border)] text-sm text-[var(--color-text)] placeholder:text-[var(--color-text-muted)] resize-none focus:outline-none focus:border-[var(--color-accent)] disabled:opacity-50 min-h-[42px] max-h-[120px]"
+            className="w-full min-h-[48px] max-h-[120px] resize-none rounded-xl border border-neutral-700/80 bg-neutral-900/80 px-4 py-3 text-base text-neutral-100 placeholder:text-neutral-500 transition-colors duration-500 ease-out focus:bg-neutral-900 focus:border-neutral-600 focus:outline-none focus:ring-0 disabled:opacity-60 leading-relaxed"
             style={{
               height: "auto",
               overflow: "hidden",
@@ -109,14 +127,16 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
         </div>
 
         <button
+          type="button"
           onClick={handleSend}
           disabled={disabled || (!text.trim() && !image)}
-          className="flex-shrink-0 p-2.5 rounded-lg bg-[var(--color-accent)] text-white hover:bg-[var(--color-accent-hover)] transition-colors disabled:opacity-50 disabled:hover:bg-[var(--color-accent)]"
+          className="flex-shrink-0 p-3 rounded-xl bg-neutral-950 text-white shadow-sm ring-1 ring-neutral-800 transition-colors duration-500 ease-out hover:bg-brand focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 disabled:opacity-40"
+          aria-label={disabled ? "Sending" : "Send message"}
         >
           {disabled ? (
-            <Loader2 size={18} className="animate-spin" />
+            <Loader2 size={18} className="animate-spin" strokeWidth={2} />
           ) : (
-            <Send size={18} />
+            <Send size={18} strokeWidth={2} />
           )}
         </button>
       </div>

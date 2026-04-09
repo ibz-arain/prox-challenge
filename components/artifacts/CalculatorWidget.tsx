@@ -18,13 +18,13 @@ function DutyCycleCalculator() {
 
   return (
     <div className="space-y-4">
-      <p className="text-xs text-[var(--color-text-muted)]">
+      <p className="text-xs text-neutral-400 leading-relaxed">
         Duty cycle tells you how many minutes out of a 10-minute cycle you can
         weld continuously before needing to let the machine cool.
       </p>
       <div className="space-y-3">
         <div>
-          <label className="text-xs font-medium text-[var(--color-text-muted)] block mb-1">
+          <label className="text-xs font-medium text-neutral-400 block mb-1">
             Amperage: {amperage}A
           </label>
           <input
@@ -33,15 +33,15 @@ function DutyCycleCalculator() {
             max={220}
             value={amperage}
             onChange={(e) => setAmperage(Number(e.target.value))}
-            className="w-full accent-[var(--color-accent)]"
+            className="w-full accent-brand"
           />
-          <div className="flex justify-between text-xs text-[var(--color-text-muted)]">
+          <div className="flex justify-between text-xs text-neutral-500">
             <span>30A</span>
             <span>220A</span>
           </div>
         </div>
         <div>
-          <label className="text-xs font-medium text-[var(--color-text-muted)] block mb-1">
+          <label className="text-xs font-medium text-neutral-400 block mb-1">
             Duty Cycle: {dutyCycle}%
           </label>
           <input
@@ -51,43 +51,39 @@ function DutyCycleCalculator() {
             step={5}
             value={dutyCycle}
             onChange={(e) => setDutyCycle(Number(e.target.value))}
-            className="w-full accent-[var(--color-accent)]"
+            className="w-full accent-brand"
           />
-          <div className="flex justify-between text-xs text-[var(--color-text-muted)]">
+          <div className="flex justify-between text-xs text-neutral-500">
             <span>10%</span>
             <span>60%</span>
           </div>
         </div>
       </div>
       <div className="grid grid-cols-2 gap-3">
-        <div className="p-3 rounded-lg bg-[var(--color-success)]/10 border border-[var(--color-success)]/30">
-          <div className="text-xs text-[var(--color-text-muted)]">
-            Weld Time
-          </div>
-          <div className="text-lg font-bold text-[var(--color-success)]">
+        <div className="p-3 rounded-xl bg-green-950/50 border border-green-600/35 shadow-sm ring-1 ring-green-600/20">
+          <div className="text-xs font-medium text-neutral-400">Weld Time</div>
+          <div className="text-lg font-semibold text-green-400 leading-snug">
             {weldTime.toFixed(1)} min
           </div>
         </div>
-        <div className="p-3 rounded-lg bg-[var(--color-warning)]/10 border border-[var(--color-warning)]/30">
-          <div className="text-xs text-[var(--color-text-muted)]">
-            Cool Down
-          </div>
-          <div className="text-lg font-bold text-[var(--color-warning)]">
+        <div className="p-3 rounded-xl bg-amber-950/40 border border-amber-500/35 shadow-sm ring-1 ring-amber-500/20">
+          <div className="text-xs font-medium text-neutral-400">Cool Down</div>
+          <div className="text-lg font-semibold text-amber-400 leading-snug">
             {coolTime.toFixed(1)} min
           </div>
         </div>
       </div>
-      <div className="h-4 rounded-full overflow-hidden bg-[var(--color-surface-3)] flex">
+      <div className="h-4 rounded-full overflow-hidden bg-neutral-800 flex ring-1 ring-neutral-700">
         <div
-          className="h-full bg-[var(--color-success)] transition-all duration-300"
+          className="h-full bg-green-600 transition-all duration-500 ease-out"
           style={{ width: `${dutyCycle}%` }}
         />
         <div
-          className="h-full bg-[var(--color-warning)]/50 transition-all duration-300"
+          className="h-full bg-amber-400/60 transition-all duration-500 ease-out"
           style={{ width: `${100 - dutyCycle}%` }}
         />
       </div>
-      <p className="text-xs text-[var(--color-text-muted)]">
+      <p className="text-xs text-neutral-400 leading-relaxed">
         At {amperage}A with {dutyCycle}% duty cycle, you can weld for{" "}
         {weldTime.toFixed(1)} minutes, then need {coolTime.toFixed(1)} minutes
         of cool-down in each 10-minute period.
@@ -138,26 +134,26 @@ function SettingsConfigurator() {
     <div className="space-y-4">
       <div className="grid grid-cols-3 gap-3">
         <div>
-          <label className="text-xs font-medium text-[var(--color-text-muted)] block mb-1">
+          <label className="text-xs font-medium text-neutral-400 block mb-1">
             Process
           </label>
           <select
             value={process}
             onChange={(e) => setProcess(e.target.value)}
-            className="w-full px-3 py-2 rounded-lg bg-[var(--color-surface-3)] border border-[var(--color-border)] text-sm text-[var(--color-text)] focus:outline-none focus:border-[var(--color-accent)]"
+            className="w-full px-3 py-2 rounded-xl border border-neutral-700 bg-neutral-900/80 text-sm text-neutral-100 transition-colors duration-500 ease-out focus:bg-neutral-900 focus:border-neutral-600 focus:outline-none focus:ring-0"
           >
             <option value="MIG">MIG</option>
             <option value="Flux-Cored">Flux-Cored</option>
           </select>
         </div>
         <div>
-          <label className="text-xs font-medium text-[var(--color-text-muted)] block mb-1">
+          <label className="text-xs font-medium text-neutral-400 block mb-1">
             Material
           </label>
           <select
             value={material}
             onChange={(e) => setMaterial(e.target.value)}
-            className="w-full px-3 py-2 rounded-lg bg-[var(--color-surface-3)] border border-[var(--color-border)] text-sm text-[var(--color-text)] focus:outline-none focus:border-[var(--color-accent)]"
+            className="w-full px-3 py-2 rounded-xl border border-neutral-700 bg-neutral-900/80 text-sm text-neutral-100 transition-colors duration-500 ease-out focus:bg-neutral-900 focus:border-neutral-600 focus:outline-none focus:ring-0"
           >
             <option value="mild-steel">Mild Steel</option>
             <option value="stainless">Stainless Steel</option>
@@ -167,13 +163,13 @@ function SettingsConfigurator() {
           </select>
         </div>
         <div>
-          <label className="text-xs font-medium text-[var(--color-text-muted)] block mb-1">
+          <label className="text-xs font-medium text-neutral-400 block mb-1">
             Thickness
           </label>
           <select
             value={thickness}
             onChange={(e) => setThickness(e.target.value)}
-            className="w-full px-3 py-2 rounded-lg bg-[var(--color-surface-3)] border border-[var(--color-border)] text-sm text-[var(--color-text)] focus:outline-none focus:border-[var(--color-accent)]"
+            className="w-full px-3 py-2 rounded-xl border border-neutral-700 bg-neutral-900/80 text-sm text-neutral-100 transition-colors duration-500 ease-out focus:bg-neutral-900 focus:border-neutral-600 focus:outline-none focus:ring-0"
           >
             {process !== "Flux-Cored" && (
               <option value="1/16">1/16&quot;</option>
@@ -184,13 +180,13 @@ function SettingsConfigurator() {
           </select>
         </div>
       </div>
-      <div className="p-3 rounded-lg bg-[var(--color-accent)]/10 border border-[var(--color-accent)]/30">
-        <div className="text-xs text-[var(--color-text-muted)] mb-1">
+      <div className="p-3 rounded-xl border border-brand/30 bg-brand/10 shadow-sm ring-1 ring-brand/15">
+        <div className="text-xs font-medium text-neutral-400 mb-1">
           Recommended Settings
         </div>
-        <div className="text-sm font-medium">{setting}</div>
+        <div className="text-sm font-medium text-neutral-100 leading-snug">{setting}</div>
       </div>
-      <p className="text-xs text-[var(--color-text-muted)]">
+      <p className="text-xs text-neutral-400 leading-relaxed">
         These are starting-point settings. Fine-tune based on your specific
         joint type and position. Always test on scrap material first.
       </p>

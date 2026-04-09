@@ -24,20 +24,30 @@ export async function POST(req: NextRequest) {
 
     void (async () => {
       try {
-        await sendEvent({ type: "status", stage: "searching" });
-        const result = await runAgent(
-          messages,
-          async (delta) => {
-            await sendEvent({ type: "text", delta });
+        const result = await runAgent(messages, {
+          onStatus: async (message) => {
+            await sendEvent({ type: "status", message });
           },
-          async (stage) => {
-            await sendEvent({ type: "status", stage });
-          }
-        );
+          onTextDelta: async (delta) => {
+            await sendEvent({ type: "text_delta", delta });
+          },
+          onCitation: async (citation) => {
+            await sendEvent({ type: "citation", data: citation });
+          },
+          onArtifact: async (artifact) => {
+            await sendEvent({ type: "artifact", data: artifact });
+          },
+          onPageImage: async (pageImage) => {
+            await sendEvent({
+              type: "page_image",
+              data: { ...pageImage, imageUrl: pageImage.url },
+            });
+          },
+        });
 
-        await sendEvent({ type: "citations", data: result.citations });
-        await sendEvent({ type: "artifacts", data: result.artifacts });
-        await sendEvent({ type: "pageImages", data: result.pageImages });
+        if (!result.text) {
+          await sendEvent({ type: "text_delta", delta: "" });
+        }
         await sendEvent({ type: "done" });
       } catch (error) {
         console.error("Chat stream error:", error);

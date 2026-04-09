@@ -1,19 +1,21 @@
 @import "tailwindcss";
 
+@theme {
+  --color-brand: #ef6300;
+  --color-brand-hover: #ff8324;
+}
+
 :root {
-  --color-bg: #0a0a0f;
-  --color-surface: #12121a;
-  --color-surface-2: #1a1a26;
-  --color-surface-3: #22222f;
-  --color-border: #2a2a3a;
-  --color-text: #e4e4ef;
-  --color-text-muted: #8888a0;
-  --color-accent: #3b82f6;
-  --color-accent-hover: #2563eb;
-  --color-user-bubble: #1e3a5f;
-  --color-success: #22c55e;
-  --color-warning: #f59e0b;
-  --color-danger: #ef4444;
+  --color-bg: #0a0a0a;
+  --color-surface: #171717;
+  --color-surface-2: #262626;
+  --color-surface-3: #404040;
+  --color-border: rgb(64 64 64 / 0.85);
+  --color-text: #fafafa;
+  --color-text-muted: #a3a3a3;
+  --color-brand: #ef6300;
+  --color-brand-hover: #ff8324;
+  --color-user-bubble: #262626;
 }
 
 html {
@@ -23,57 +25,80 @@ html {
 body {
   background: var(--color-bg);
   color: var(--color-text);
-  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+}
+
+@keyframes pulse-animation {
+  0% {
+    opacity: 0.1;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.1;
+  }
 }
 
 @layer utilities {
-  .scrollbar-thin {
+  .sleek-scrollbar {
     scrollbar-width: thin;
-    scrollbar-color: var(--color-border) transparent;
+    scrollbar-color: rgb(82 82 82 / 0.7) transparent;
   }
-  .scrollbar-thin::-webkit-scrollbar {
-    width: 6px;
+  .sleek-scrollbar::-webkit-scrollbar {
+    width: 4px;
   }
-  .scrollbar-thin::-webkit-scrollbar-track {
-    background: transparent;
+  .sleek-scrollbar::-webkit-scrollbar-thumb {
+    background-color: rgb(82 82 82 / 0.7);
+    border-radius: 999px;
   }
-  .scrollbar-thin::-webkit-scrollbar-thumb {
-    background: var(--color-border);
-    border-radius: 3px;
+  .sleek-scrollbar::-webkit-scrollbar-thumb:hover {
+    background-color: rgb(115 115 115 / 0.85);
+  }
+
+  .animate-pulse-breath {
+    animation: pulse-animation 900ms ease-in-out infinite;
   }
 }
 
-.prose-invert table {
+/* Markdown / chat prose (dark, neutral) */
+.prose-chat {
+  color: #d4d4d4;
+}
+.prose-chat table {
   border-collapse: collapse;
   width: 100%;
 }
-.prose-invert table th,
-.prose-invert table td {
-  border: 1px solid var(--color-border);
+.prose-chat table th,
+.prose-chat table td {
+  border: 1px solid rgb(64 64 64 / 0.9);
   padding: 0.5rem 0.75rem;
   text-align: left;
 }
-.prose-invert table th {
-  background: var(--color-surface-2);
+.prose-chat table th {
+  background: #262626;
   font-weight: 600;
+  color: #fafafa;
 }
-.prose-invert table tr:nth-child(even) {
-  background: var(--color-surface);
+.prose-chat table tr:nth-child(even) {
+  background: #1a1a1a;
 }
 
 .artifact-card {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
+  background: #171717;
+  border: 1px solid rgb(64 64 64 / 0.85);
   border-radius: 0.75rem;
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.4);
   overflow: hidden;
 }
 
 .artifact-card-header {
-  background: var(--color-surface-2);
-  padding: 0.5rem 1rem;
+  background: #1f1f1f;
+  padding: 0.75rem 1rem;
   font-size: 0.8125rem;
   font-weight: 600;
-  border-bottom: 1px solid var(--color-border);
+  color: #e5e5e5;
+  border-bottom: 1px solid rgb(64 64 64 / 0.85);
   display: flex;
   align-items: center;
   gap: 0.5rem;
