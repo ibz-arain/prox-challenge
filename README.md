@@ -1,78 +1,58 @@
-# OmniPro 220 Technical Support Agent
+# OmniPro 220 support agent
 
-Multimodal technical support for the **Vulcan OmniPro 220** multiprocess welder: answers grounded in the owner’s manuals, with citations, manual page images, diagrams, and interactive artifacts (tables, flowcharts, calculators). Built for the [Prox Founding Engineer Challenge](https://useprox.com/join/challenge).
+Next.js app for the Vulcan OmniPro 220 multiprocess welder. You chat in plain language and can attach a photo (panel, weld, error screen). Replies are grounded in the owner manuals under `files/`: the UI shows citations, page excerpts, and rendered page images. When a table, diagram, or small interactive piece helps more than prose, the model wraps that content in `<artifact>` tags and the client renders it as real components.
 
-## Demo
+**Live:** [prox-challenge-ibz-arain.vercel.app](https://prox-challenge-ibz-arain.vercel.app/)
 
-| | |
-| --- | --- |
-| **Live app** | `https://prox-challenge-ibz-arain.vercel.app/` |
-| **Video walkthrough** | `https://www.youtube.com/watch?v=lpVg2lxntsc` |
-
-## What it does
-
-- **Chat + evidence UI** — Ask in plain language or **attach a photo** (panel, weld, error screen, wiring). The model can use the image together with the manuals. Replies stream in; the side panel shows **sources**, **page excerpts**, and **page images** from the PDFs.
-- **Starter prompts** — The landing UI includes suggested questions you can click to load into the chat.
-- **Product-scoped** — Off-topic questions get a short boundary response and suggested OmniPro questions, not a general chat rabbit hole.
-- **Manuals from `files/`** — PDFs are indexed locally; retrieval and page rendering power the agent tools.
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=lpVg2lxntsc">
+    <img src="https://img.youtube.com/vi/lpVg2lxntsc/maxresdefault.jpg" alt="Walkthrough video" width="720" />
+  </a>
+</p>
 
 ## How the agent works
 
-1. The Next.js app sends the conversation to **`POST /api/chat`** ([`app/api/chat/route.ts`](app/api/chat/route.ts)), which runs **`runAgent`** ([`lib/agent/index.ts`](lib/agent/index.ts)) against the Anthropic **Messages API** with **tool use** in a loop until the model finishes.
-2. **Tools** ([`lib/agent/tools.ts`](lib/agent/tools.ts)): `search_manual`, `search_manual_multi`, `get_page`, `get_page_bundle`, `get_page_image`, `get_visual_context`, `get_diagram`, `lookup_specs`. They read from the built search index, full page text, rendered page PNGs, a small **diagram catalog**, and spec helpers.
-3. **System behavior** ([`lib/agent/system-prompt.ts`](lib/agent/system-prompt.ts)): scope guard (OmniPro-related vs not), when to search vs reuse the thread, when to ask for process/thickness/voltage, safety notes, and rules for **`<artifact>`** blocks in the reply.
-4. **Streaming** — Token text is sent over SSE; `<artifact>...</artifact>` segments are parsed and rendered by [`components/artifacts/ArtifactRenderer.tsx`](components/artifacts/ArtifactRenderer.tsx) (tables, SVG diagrams, flowcharts, calculators, HTML, etc.).
+The browser sends the thread to `POST /api/chat` ([`app/api/chat/route.ts`](app/api/chat/route.ts)). The handler calls `runAgent` in [`lib/agent/index.ts`](lib/agent/index.ts), which talks to the Anthropic Messages API in a loop: the model may request tool calls, the server runs them and appends tool results to the conversation, and this repeats until the model returns final text without new tools.
 
-## Multimodal response flow
+Tools are defined in [`lib/agent/tools.ts`](lib/agent/tools.ts): search the manuals (including multi-query search), read full page text, fetch page bundles, load page PNGs, pull entries from a diagram catalog, and look up specs. The system prompt in [`lib/agent/system-prompt.ts`](lib/agent/system-prompt.ts) keeps the assistant on welder-related topics, nudges it to retrieve instead of guessing, and describes how to format artifacts. User images ride along in the message so the model can relate a photo to manual content.
 
-```mermaid
-flowchart TD
-    startNode[UserMessage]
-    scopeNode{OmniPro220Question}
-    refuseNode[ShortBoundaryPlusSuggestionArtifact]
-    clarifyNode{MissingCriticalDetail}
-    askNode[AskShortClarifyingQuestion]
-    retrieveNode[ToolsSearchReadPagesImagesDiagrams]
-    composeNode[ProseThenArtifactTags]
-    streamNode[SSEToClient]
-    evidenceNode[EvidencePanelCitationsAndPageImages]
-
-    startNode --> scopeNode
-    scopeNode -->|no| refuseNode
-    scopeNode -->|yes| clarifyNode
-    clarifyNode -->|yes| askNode
-    clarifyNode -->|no| retrieveNode
-    askNode --> retrieveNode
-    retrieveNode --> composeNode
-    composeNode --> streamNode
-    streamNode --> evidenceNode
-```
-
-For off-topic requests the model does **not** call tools; for in-scope technical questions it retrieves from the manual, then answers with at least one line of prose before any artifacts.
+Nothing useful is hidden in the stream. Token text goes out over SSE; citations, page images, and parsed artifacts are emitted as their own events so the evidence sidebar and inline widgets stay aligned with what the user is reading. [`components/artifacts/ArtifactRenderer.tsx`](components/artifacts/ArtifactRenderer.tsx) maps artifact types to React (tables, SVG, Mermaid, calculators, constrained HTML, etc.).
 
 ## Design decisions
 
-- **Messages API + custom tool loop** instead of the Claude Agent SDK: this app is a web chat with streaming and UI-owned tool execution, not an autonomous coding agent with a sandbox. Same agentic pattern (prompt → tools → loop → answer), full control over events and rendering.
-- **Purpose-built tools** (search, pages, images, diagrams, specs) instead of a single “dump context” retrieval step, so the model can cross-reference like a human using a manual.
-- **`<artifact>` protocol** so structured outputs become real UI: tables, SVGs, interactive flowcharts, calculators, and small HTML widgets—not text-only answers for spatial or procedural topics.
-- **Evidence panel** so every substantive claim is inspectable (page number, excerpt, image).
-- **Lazy index build** on first chat request (search index and assets are created when needed).
-- **Tone and accuracy** — Written for a capable owner in a garage; the manual is the source of truth for numbers and wiring—no guessing or interpolating missing specs.
+I kept the agent loop in application code rather than leaning on a separate “agent SDK” stack. This is a product surface: I wanted predictable streaming, explicit timeouts (cold starts can spend time building the index), and full control over which structured payloads reach the client. The pattern is still the familiar one—LLM, tools, multi-turn execution—but it lives beside the route that already owns request validation, `maxDuration`, and the SSE stream shape.
+
+Retrieval is split into several tools instead of one retrieval step that dumps a large context block. A manual is navigated in steps: search, open a page, compare another section, fetch an image when the figure matters. That usually spends tokens more deliberately than sending every possibly relevant chunk at once.
+
+Artifacts are a deliberate contract. Procedures and numeric relationships are hard to scan in a wall of markdown. Letting the model emit tagged blocks means the UI can treat them as data and render them consistently, instead of hoping markdown tables and ASCII art survive streaming and mobile layouts.
+
+The evidence panel is not decorative. If the assistant cites a page, you should be able to open the excerpt and the same page render the tools used. That keeps “grounded in the PDF” something you can verify in one place.
 
 ## Knowledge extraction and representation
 
-1. **Ingestion** ([`scripts/ingest.ts`](scripts/ingest.ts), [`lib/ingest/`](lib/ingest/)): PDFs under **`files/`** are parsed with **pdf.js**; very low-text pages go through **Claude vision** for structured text. Pages get light metadata (section, content type). A **MiniSearch** index is written to **`generated/`** (gitignored), along with **`pages.json`** and status.
-2. **Images** — Page renders for evidence live under **`public/manual-pages/`** and **`generated/page-images/`** as the pipeline runs.
-3. **At runtime** the agent searches and fetches page text and, when needed, page images and catalog diagrams—represented as JSON-backed search hits and file-backed PNGs served to the UI.
+Ingestion is [`scripts/ingest.ts`](scripts/ingest.ts) plus [`lib/ingest/`](lib/ingest/). PDFs in `files/` are parsed with pdf.js. When a page has almost no extractable text (common for diagram-heavy spreads), a vision pass asks Claude for structured text so search and snippets still have something to index.
 
-## How to run it
+Each page carries light metadata (for example section hints and content type). Search is backed by MiniSearch; the built index and `pages.json` live under `generated/` (gitignored). Page renders for evidence are written to `public/manual-pages/` and `generated/page-images/` as part of that pipeline.
+
+At query time, [`lib/retrieval/search.ts`](lib/retrieval/search.ts) can build the index on the first search if nothing exists yet, so a fresh clone runs after `npm install` without a mandatory ingest step. Running `npm run ingest` beforehand avoids a long first message when you would rather pay that cost up front.
+
+To the model, knowledge is not “in the weights.” It arrives as tool output: search hits pointing at pages, full page text as JSON, paths to PNGs it can request, and a small curated diagram catalog. There is no separate vector database; retrieval is keyword search over indexed page records plus explicit fetches.
+
+## Run it
 
 ```bash
 git clone https://github.com/ibz-arain/prox-challenge.git
 cd prox-challenge
 cp .env.example .env
+```
+
+Add `ANTHROPIC_API_KEY` to `.env` (from [Anthropic Console](https://console.anthropic.com/)), then:
+
+```bash
 npm install
 npm run dev
 ```
 
-Set `ANTHROPIC_API_KEY` in `.env` ([Anthropic Console](https://console.anthropic.com/)). Open **http://localhost:3000**. The chat uses **Claude Sonnet 4** (`claude-sonnet-4-20250514`).
+Open [http://localhost:3000](http://localhost:3000). The chat model is `claude-sonnet-4-20250514`.
+
+Optional: `npm run ingest` to build manuals before the first chat. Optional: `npm run eval` for the script in [`scripts/eval.ts`](scripts/eval.ts).
