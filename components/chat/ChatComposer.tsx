@@ -6,6 +6,7 @@ import {
   useEffect,
   useRef,
   useState,
+  type DragEvent,
   type KeyboardEvent,
   type ReactNode,
   type Ref,
@@ -119,9 +120,11 @@ const ChatComposer = forwardRef<HTMLDivElement, ChatComposerProps>(
     const [imageMimeType, setImageMimeType] = useState<string | null>(null);
     const [imagePreview, setImagePreview] = useState<string | null>(null);
     const [listening, setListening] = useState(false);
+    const [dragOver, setDragOver] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const textAreaRef = useRef<HTMLTextAreaElement>(null);
     const recognitionRef = useRef<WebSpeechRecognition | null>(null);
+    const prevModeRef = useRef(mode);
 
     const speechSupported = typeof window !== "undefined" && !!getSpeechRecognitionCtor();
 
@@ -133,6 +136,18 @@ const ChatComposer = forwardRef<HTMLDivElement, ChatComposerProps>(
       setImagePreview(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
     }, [sessionKey, mode]);
+
+    /** After landing FLIP, thread mode mounts — clear input so text lives in the bubble, not the bar. */
+    useEffect(() => {
+      if (prevModeRef.current === "landing" && mode === "thread") {
+        setText("");
+        setImage(null);
+        setImageMimeType(null);
+        setImagePreview(null);
+        if (fileInputRef.current) fileInputRef.current.value = "";
+      }
+      prevModeRef.current = mode;
+    }, [mode]);
 
     useEffect(() => {
       if (!composerFill?.id) return;
@@ -157,9 +172,8 @@ const ChatComposer = forwardRef<HTMLDivElement, ChatComposerProps>(
       };
     }, []);
 
-    const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
+    const applyImageFile = useCallback((file: File) => {
+      if (!file.type.startsWith("image/")) return;
       const mime = file.type?.trim() || undefined;
       const reader = new FileReader();
       reader.onload = (ev) => {
@@ -171,6 +185,12 @@ const ChatComposer = forwardRef<HTMLDivElement, ChatComposerProps>(
         setImageMimeType(mime || fromDataUrl || null);
       };
       reader.readAsDataURL(file);
+    }, []);
+
+    const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      applyImageFile(file);
     };
 
     const submit = useCallback(() => {
@@ -239,6 +259,41 @@ const ChatComposer = forwardRef<HTMLDivElement, ChatComposerProps>(
     };
 
     const busy = disabled || isSending;
+
+    const hasFilePayload = (dt: DataTransfer) =>
+      Array.from(dt.types as readonly string[]).includes("Files");
+
+    const handleDragEnter = (e: DragEvent<HTMLDivElement>) => {
+      if (busy || !hasFilePayload(e.dataTransfer)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      setDragOver(true);
+    };
+
+    const handleDragOver = (e: DragEvent<HTMLDivElement>) => {
+      if (busy || !hasFilePayload(e.dataTransfer)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      e.dataTransfer.dropEffect = "copy";
+    };
+
+    const handleDragLeave = (e: DragEvent<HTMLDivElement>) => {
+      const next = e.relatedTarget as Node | null;
+      if (next && e.currentTarget.contains(next)) return;
+      setDragOver(false);
+    };
+
+    const handleDrop = (e: DragEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setDragOver(false);
+      if (busy) return;
+      const files = Array.from(e.dataTransfer.files ?? []);
+      const firstImage = files.find((f) => f.type.startsWith("image/"));
+      if (!firstImage) return;
+      applyImageFile(firstImage);
+    };
+
     const canSend = (text.trim().length > 0 || !!image) && !busy;
     const sendLooksReady = isSending || canSend;
     const showStop = isSending && typeof onCancel === "function";
@@ -260,7 +315,15 @@ const ChatComposer = forwardRef<HTMLDivElement, ChatComposerProps>(
 
         <div
           ref={ref}
-          className="w-full overflow-hidden rounded-2xl border border-white/10 bg-(--color-surface)/90 shadow-[0_12px_40px_rgba(0,0,0,0.4),inset_0_1px_0_0_rgba(255,255,255,0.05)] ring-1 ring-white/5 backdrop-blur-xl transition-[border-color,box-shadow,ring-color] duration-200 ease-out hover:border-brand/50 hover:shadow-[0_0_0_1px_rgba(239,99,0,0.28),0_0_36px_rgba(239,99,0,0.18),0_12px_40px_rgba(0,0,0,0.4)] hover:ring-brand/25 focus-within:border-brand/50 focus-within:shadow-[0_0_0_1px_rgba(239,99,0,0.28),0_0_36px_rgba(239,99,0,0.18),0_12px_40px_rgba(0,0,0,0.4)] focus-within:ring-brand/25 focus-within:hover:border-brand/50 focus-within:hover:shadow-[0_0_0_1px_rgba(239,99,0,0.28),0_0_36px_rgba(239,99,0,0.18),0_12px_40px_rgba(0,0,0,0.4)] focus-within:hover:ring-brand/25"
+          onDragEnter={handleDragEnter}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+          className={`w-full overflow-hidden rounded-2xl border bg-(--color-surface)/90 shadow-[0_12px_40px_rgba(0,0,0,0.4),inset_0_1px_0_0_rgba(255,255,255,0.05)] backdrop-blur-xl transition-[border-color,box-shadow,ring-color] duration-200 ease-out hover:border-brand/50 hover:shadow-[0_0_0_1px_rgba(239,99,0,0.28),0_0_36px_rgba(239,99,0,0.18),0_12px_40px_rgba(0,0,0,0.4)] hover:ring-brand/25 focus-within:border-brand/50 focus-within:shadow-[0_0_0_1px_rgba(239,99,0,0.28),0_0_36px_rgba(239,99,0,0.18),0_12px_40px_rgba(0,0,0,0.4)] focus-within:ring-brand/25 focus-within:hover:border-brand/50 focus-within:hover:shadow-[0_0_0_1px_rgba(239,99,0,0.28),0_0_36px_rgba(239,99,0,0.18),0_12px_40px_rgba(0,0,0,0.4)] focus-within:hover:ring-brand/25 ${
+            dragOver && !busy
+              ? "border-brand/60 ring-2 ring-brand/35 shadow-[0_0_0_1px_rgba(239,99,0,0.35),0_0_40px_rgba(239,99,0,0.22),0_12px_40px_rgba(0,0,0,0.45)]"
+              : "border-white/10 ring-1 ring-white/5"
+          }`}
         >
           {imagePreview && (
             <div className="flex items-start gap-2 border-b border-white/6 px-4 py-2.5">

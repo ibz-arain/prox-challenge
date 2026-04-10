@@ -40,9 +40,9 @@ export const ARTIFACT_PATTERNS: ArtifactPattern[] = [
   {
     id: "polarity-leads",
     name: "Polarity / lead routing",
-    primaryType: "svg-diagram (use get_diagram when possible)",
+    primaryType: "svg-diagram or mermaid (get_diagram = optional reference SVG)",
     secondType: "table",
-    whenToUse: "DCEP/DCEN, torch/work lead, which socket for ground—spatial connection questions.",
+    whenToUse: "DCEP/DCEN, torch/work lead, which socket for ground—spatial connection questions; tailor the diagram to the user's exact process/question.",
     manualSections: "polarity",
   },
   {
@@ -56,7 +56,7 @@ export const ARTIFACT_PATTERNS: ArtifactPattern[] = [
   {
     id: "troubleshooting-tree",
     name: "Troubleshooting",
-    primaryType: "flowchart",
+    primaryType: "mermaid or flowchart (JSON steps)",
     secondType: "artifact-html (checklist)",
     whenToUse: "Porosity, arc start, wire feed, erratic arc, contamination—decision-style fixes.",
     manualSections: "troubleshooting",
@@ -142,8 +142,8 @@ export const RETAIL_PRODUCT_CONTEXT = `## Retail listing context (supplementary,
 - Listed as Vulcan OmniPro 220 Industrial Multiprocess Welder with 120/240V input (Harbor Freight item 57812).
 - Positioned as a multiprocess unit (MIG, flux-cored, TIG, stick) with synergic-style control; exact features and ratings on the store page may change—always confirm numbers in the Owner's Manual via tools.`;
 
-export const ARTIFACT_CATALOG_PROMPT_SECTION = `## Artifact catalog (pick 1–2 patterns per answer)
-Choose the smallest set that helps the user. Do not add artifacts just to reach a count.
+export const ARTIFACT_CATALOG_PROMPT_SECTION = `## Artifact capabilities (examples — pick 1–2 per answer)
+Choose the smallest set that fits the question. Diagrams are often **bespoke**: custom SVG or Mermaid tailored to the user's exact wording, not only the rows below. Do not add artifacts just to reach a count.
 
 ${ARTIFACT_PATTERNS.map(
   (p, i) =>
@@ -160,6 +160,10 @@ ${ARTIFACT_PATTERNS.map(
 
 ### step-list artifact
 - Use \`<artifact type="step-list" title="Title">{"steps":[{"title":"...","detail":"..."}]}</artifact>\` for ordered procedures (setup, drive tension, checks).
+
+### mermaid artifact
+- Raw Mermaid only inside the tag—no markdown code fences, e.g. \`<artifact type="mermaid" title="Flow">graph TD\\n  A[Check gas] --> B{Flow OK?}\\n  B -->|No| C[Fix leak]\\n  B -->|Yes| D[Weld]</artifact>\`
+- Prefer **mermaid** for decision trees and flows; use **svg-diagram** when you need precise layout (sockets, panel).
 
 ### artifact-html
 - JSON with \`html\`, \`css\`, optional \`js\`, optional \`height\`. Use for safety callouts, checklists, suggested-questions lists when off-topic.`;

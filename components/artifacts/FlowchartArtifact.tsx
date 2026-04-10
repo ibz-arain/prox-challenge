@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { GitBranch, ChevronRight } from "lucide-react";
+import MermaidArtifact from "./MermaidArtifact";
 
 interface FlowStep {
   id: string;
@@ -29,6 +30,14 @@ function parseFlowchart(content: string): FlowStep[] | null {
   }
 }
 
+function looksLikeMermaid(source: string): boolean {
+  const s = source.trim();
+  if (!s) return false;
+  return /^(?:graph|flowchart|sequenceDiagram|classDiagram|stateDiagram|erDiagram|journey|gantt|pie|mindmap)\b/i.test(
+    s
+  );
+}
+
 export default function FlowchartArtifact({
   title,
   content,
@@ -37,6 +46,9 @@ export default function FlowchartArtifact({
   const [currentStep, setCurrentStep] = useState<string | null>(null);
 
   if (!steps) {
+    if (looksLikeMermaid(content)) {
+      return <MermaidArtifact title={title} content={content} />;
+    }
     return (
       <div className="artifact-card my-4">
         <div className="artifact-card-header">

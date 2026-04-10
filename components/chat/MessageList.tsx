@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   CHAT_GUTTER_X_CLASS,
   CHAT_MAX_WIDTH_CLASS,
@@ -42,6 +42,15 @@ export default function MessageList({
 }: MessageListProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [autoScrollEnabled, setAutoScrollEnabled] = useState(true);
+  const [reduceMotion, setReduceMotion] = useState(false);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    setReduceMotion(mq.matches);
+    const onChange = () => setReduceMotion(mq.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
 
   const streamingAssistantIndex = useMemo(() => {
     if (!isLoading) return -1;
@@ -53,11 +62,53 @@ export default function MessageList({
     return -1;
   }, [isLoading, messages]);
 
-  useEffect(() => {
-    if (!autoScrollEnabled || !scrollRef.current) return;
+  /** Smooth follow to bottom while streaming or when artifacts grow; respects reduced motion. */
+  useLayoutEffect(() => {
+    if (!autoScrollEnabled) return;
     const node = scrollRef.current;
-    node.scrollTop = node.scrollHeight;
-  }, [messages, statusTrail, hasTextStarted, isLoading, autoScrollEnabled]);
+    if (!node) return;
+
+    const behavior: ScrollBehavior = reduceMotion ? "auto" : "smooth";
+
+    const runScroll = () => {
+      node.scrollTo({ top: node.scrollHeight, behavior });
+    };
+
+    const id = window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(runScroll);
+    });
+    return () => window.cancelAnimationFrame(id);
+  }, [
+    messages,
+    statusTrail,
+    hasTextStarted,
+    isLoading,
+    autoScrollEnabled,
+    reduceMotion,
+  ]);
+
+  /** Async layout (e.g. Mermaid diagrams) grows after paint — keep bottom in view when following. */
+  useEffect(() => {
+    if (!autoScrollEnabled) return;
+    const node = scrollRef.current;
+    if (!node) return;
+    const inner = node.firstElementChild;
+    if (!inner) return;
+    /** Smooth scroll only while the assistant is still streaming; after that use instant scroll so late diagram layout does not “creep” the viewport upward. */
+    const behavior: ScrollBehavior =
+      reduceMotion ? "auto" : isLoading ? "smooth" : "auto";
+    const ro = new ResizeObserver(() => {
+      window.requestAnimationFrame(() => {
+        if (!scrollRef.current) return;
+        scrollRef.current.scrollTo({
+          top: scrollRef.current.scrollHeight,
+          behavior,
+        });
+      });
+    });
+    ro.observe(inner);
+    return () => ro.disconnect();
+  }, [autoScrollEnabled, reduceMotion, messages, isLoading]);
 
   const assistantTrail = (message: ChatMessage, index: number) => {
     if (message.role !== "assistant") return [];
@@ -91,16 +142,15 @@ export default function MessageList({
       onScroll={handleScroll}
       className={`chat-thread-scroller sleek-scrollbar min-h-0 flex-1 space-y-10 overscroll-contain pt-6 pb-40 ${evidenceOpen ? "max-md:pb-[min(48vh,28rem)]" : ""} ${CHAT_GUTTER_X_CLASS}`}
     >
-      <div
-        className={`mx-auto min-w-0 w-full space-y-10 transition-[opacity,transform] duration-[320ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none ${CHAT_MAX_WIDTH_CLASS} ${
-          enterReady
-            ? "translate-y-0 opacity-100"
-            : "translate-y-1.5 opacity-0 motion-reduce:translate-y-0 motion-reduce:opacity-100"
-        }`}
-      >
+      <div className={`mx-auto min-w-0 w-full space-y-10 ${CHAT_MAX_WIDTH_CLASS}`}>
         {messages.map((message, index) =>
           message.role === "user" ? (
-            <UserMessage key={message.id ?? `user-${index}`} message={message} />
+            <UserMessage
+              key={message.id ?? `user-${index}`}
+              message={message}
+              entrance={index === 0 ? "first-from-bottom" : "none"}
+              enterReady={index === 0 ? enterReady : true}
+            />
           ) : (
             <AssistantMessage
               key={message.id ?? `assistant-${index}`}

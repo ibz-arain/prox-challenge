@@ -8,6 +8,7 @@ import CalculatorWidget from "./CalculatorWidget";
 import SettingsCard from "./SettingsCard";
 import HtmlArtifact from "./HtmlArtifact";
 import StepListArtifact from "./StepListArtifact";
+import MermaidArtifact from "./MermaidArtifact";
 
 interface ArtifactRendererProps {
   artifact: Artifact;
@@ -28,6 +29,10 @@ export default function ArtifactRenderer({
     case "flowchart":
       return (
         <FlowchartArtifact title={artifact.title} content={artifact.content} />
+      );
+    case "mermaid":
+      return (
+        <MermaidArtifact title={artifact.title} content={artifact.content} />
       );
     case "calculator":
       return (

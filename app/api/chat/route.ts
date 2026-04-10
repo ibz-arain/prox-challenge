@@ -66,10 +66,11 @@ export async function POST(req: NextRequest) {
           pageImageCount: result.pageImages.length,
         });
 
-        if (!result.text) {
-          await sendEvent({ type: "text_delta", delta: "" });
-        }
-        await sendEvent({ type: "text_replace", text: result.text });
+        const replyText =
+          typeof result.text === "string" && result.text.trim().length > 0
+            ? result.text
+            : "I couldn't format a reply from the model. Please send your question again.";
+        await sendEvent({ type: "text_replace", text: replyText });
         await sendEvent({ type: "done" });
       } catch (error) {
         console.error("Chat stream error:", error);

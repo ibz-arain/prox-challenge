@@ -33,6 +33,7 @@ export interface Artifact {
     | "table"
     | "svg-diagram"
     | "flowchart"
+    | "mermaid"
     | "calculator"
     | "settings-card"
     | "artifact-html"

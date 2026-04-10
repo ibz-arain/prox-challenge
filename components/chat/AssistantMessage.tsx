@@ -4,6 +4,7 @@ import React, { memo, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { ChatMessage, SelectedSource } from "@/lib/types";
+import { stripTrailingIncompleteArtifact } from "@/lib/artifactMarkup";
 import InlineCitation from "./InlineCitation";
 import StatusTrail from "./StatusTrail";
 import ArtifactRenderer from "../artifacts/ArtifactRenderer";
@@ -108,11 +109,24 @@ function getMessageId(message: ChatMessage, fallbackId: string) {
   return message.id ?? fallbackId;
 }
 
-function sanitizeStreamingMarkdown(text: string) {
-  return text
-    .replace(/<artifact[\s\S]*$/i, "")
-    .replace(/<\/artifact>/gi, "")
-    .trimEnd();
+function leadWhenProseMissing(artifacts: NonNullable<ChatMessage["artifacts"]>): string {
+  const first = artifacts[0];
+  if (!first) {
+    return "See the evidence below.";
+  }
+  switch (first.type) {
+    case "svg-diagram":
+      return "Here is the setup with a diagram below.";
+    case "mermaid":
+    case "flowchart":
+      return "Here is a concise flow you can follow below.";
+    case "table":
+      return "Here are the exact values in the table below.";
+    case "settings-card":
+      return "Here are the recommended settings below.";
+    default:
+      return "Here is the answer in the panel below.";
+  }
 }
 
 function AssistantMessage({
@@ -132,8 +146,21 @@ function AssistantMessage({
   const artifacts = message.artifacts ?? [];
   const pageImages = message.pageImages ?? [];
   const displayContent = isStreaming
-    ? sanitizeStreamingMarkdown(message.content)
+    ? stripTrailingIncompleteArtifact(message.content)
     : message.content;
+  let effectiveProse = displayContent;
+  if (
+    !isStreaming &&
+    streamComplete &&
+    !message.content.trim()
+  ) {
+    if (artifacts.length > 0) {
+      effectiveProse = leadWhenProseMissing(artifacts);
+    } else if (citations.length > 0) {
+      effectiveProse = "Here is what the manual pages below support.";
+    }
+  }
+  const streamingPlaceholder = isStreaming && !displayContent.trim();
 
   const evidenceUiReady = streamComplete;
 
@@ -173,66 +200,70 @@ function AssistantMessage({
         )}
         <div className="prose-chat min-w-0 text-sm leading-relaxed">
           <div className="min-w-0 overflow-x-auto">
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              components={{
-                p: ({ children }) => (
-                  <p className="mb-2 last:mb-0 text-neutral-300">
-                    {decorateInlineCitations(
-                      children,
-                      onCitationClick,
-                      evidenceUiReady,
-                      "paragraph"
-                    )}
-                  </p>
-                ),
-                strong: ({ children }) => (
-                  <strong className="font-semibold text-neutral-100">{children}</strong>
-                ),
-                code: ({ children, className }) => {
-                  const isBlock = className?.includes("language-");
-                  if (isBlock) {
+            {streamingPlaceholder ? (
+              <p className="text-neutral-500"></p>
+            ) : (
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                components={{
+                  p: ({ children }) => (
+                    <p className="mb-2 last:mb-0 text-neutral-300">
+                      {decorateInlineCitations(
+                        children,
+                        onCitationClick,
+                        evidenceUiReady,
+                        "paragraph"
+                      )}
+                    </p>
+                  ),
+                  strong: ({ children }) => (
+                    <strong className="font-semibold text-neutral-100">{children}</strong>
+                  ),
+                  code: ({ children, className }) => {
+                    const isBlock = className?.includes("language-");
+                    if (isBlock) {
+                      return (
+                        <pre className="my-2 overflow-x-auto rounded-xl border border-white/8 bg-neutral-950/80 p-3 shadow-inner ring-1 ring-white/4">
+                          <code className="font-mono text-xs text-neutral-200">{children}</code>
+                        </pre>
+                      );
+                    }
                     return (
-                      <pre className="my-2 overflow-x-auto rounded-xl border border-white/8 bg-neutral-950/80 p-3 shadow-inner ring-1 ring-white/4">
-                        <code className="font-mono text-xs text-neutral-200">{children}</code>
-                      </pre>
+                      <code className="rounded-md bg-neutral-800/90 px-1.5 py-0.5 font-mono text-xs text-brand-hover ring-1 ring-neutral-700/80">
+                        {children}
+                      </code>
                     );
-                  }
-                  return (
-                    <code className="rounded-md bg-neutral-800/90 px-1.5 py-0.5 font-mono text-xs text-brand-hover ring-1 ring-neutral-700/80">
+                  },
+                  ul: ({ children }) => (
+                    <ul className="mb-2 list-inside list-disc space-y-1 text-neutral-300">
                       {children}
-                    </code>
-                  );
-                },
-                ul: ({ children }) => (
-                  <ul className="mb-2 list-inside list-disc space-y-1 text-neutral-300">
-                    {children}
-                  </ul>
-                ),
-                ol: ({ children }) => (
-                  <ol className="mb-2 list-inside list-decimal space-y-1 text-neutral-300">
-                    {children}
-                  </ol>
-                ),
-                h3: ({ children }) => (
-                  <h3 className="mb-1 mt-3 text-base font-semibold leading-snug text-neutral-100">
-                    {children}
-                  </h3>
-                ),
-                h4: ({ children }) => (
-                  <h4 className="mb-1 mt-2 text-sm font-semibold leading-snug text-neutral-100">
-                    {children}
-                  </h4>
-                ),
-                blockquote: ({ children }) => (
-                  <blockquote className="my-2 border-l-2 border-brand pl-3 text-neutral-400">
-                    {children}
-                  </blockquote>
-                ),
-              }}
-            >
-              {displayContent}
-            </ReactMarkdown>
+                    </ul>
+                  ),
+                  ol: ({ children }) => (
+                    <ol className="mb-2 list-inside list-decimal space-y-1 text-neutral-300">
+                      {children}
+                    </ol>
+                  ),
+                  h3: ({ children }) => (
+                    <h3 className="mb-1 mt-3 text-base font-semibold leading-snug text-neutral-100">
+                      {children}
+                    </h3>
+                  ),
+                  h4: ({ children }) => (
+                    <h4 className="mb-1 mt-2 text-sm font-semibold leading-snug text-neutral-100">
+                      {children}
+                    </h4>
+                  ),
+                  blockquote: ({ children }) => (
+                    <blockquote className="my-2 border-l-2 border-brand pl-3 text-neutral-400">
+                      {children}
+                    </blockquote>
+                  ),
+                }}
+              >
+                {effectiveProse}
+              </ReactMarkdown>
+            )}
           </div>
         </div>
 

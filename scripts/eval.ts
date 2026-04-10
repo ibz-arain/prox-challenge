@@ -49,6 +49,7 @@ const TEST_CASES: TestCase[] = [
     needsVisual: true,
     expectedArtifactTypes: [
       "svg-diagram",
+      "mermaid",
       "artifact-html",
       "table",
       "flowchart",
@@ -62,6 +63,14 @@ const TEST_CASES: TestCase[] = [
     expectedKeywords: ["ground", "clamp"],
     description: "Should find ground clamp connection instructions",
     needsVisual: true,
+    expectedArtifactTypes: [
+      "svg-diagram",
+      "mermaid",
+      "flowchart",
+      "artifact-html",
+      "table",
+      "step-list",
+    ],
     maxWords: 120,
   },
   {
@@ -105,9 +114,19 @@ function hasMatchingArtifact(
   return artifacts.some((artifact) => expectedTypes.includes(artifact.type));
 }
 
+const VISUAL_ARTIFACT_TYPES: Artifact["type"][] = [
+  "svg-diagram",
+  "mermaid",
+  "flowchart",
+  "artifact-html",
+];
+
 function hasVisualEvidence(pageImages: PageImage[], artifacts: Artifact[], needsVisual?: boolean) {
   if (!needsVisual) return true;
-  return pageImages.length > 0 || artifacts.some((artifact) => artifact.type === "svg-diagram" || artifact.type === "artifact-html");
+  return (
+    pageImages.length > 0 ||
+    artifacts.some((artifact) => VISUAL_ARTIFACT_TYPES.includes(artifact.type))
+  );
 }
 
 async function runAgentEval(prompt: string) {

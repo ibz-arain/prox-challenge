@@ -76,6 +76,18 @@ body {
   }
 }
 
+/** Artifacts: fade + lift when they mount (scroll container follows via MessageList). */
+@keyframes chat-artifact-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.992);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
 @layer utilities {
   .sleek-scrollbar {
     scrollbar-width: thin;

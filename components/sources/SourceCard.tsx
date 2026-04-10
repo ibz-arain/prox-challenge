@@ -2,6 +2,7 @@
 
 import type { Citation, PageImage } from "@/lib/types";
 import { buildPageImageFromCitation } from "@/lib/evidence";
+import { sanitizeExcerptForDisplay } from "@/lib/citationExcerpt";
 
 interface SourceCardProps {
   citation: Citation;
@@ -22,8 +23,13 @@ export default function SourceCard({
   anchorId,
   active = false,
 }: SourceCardProps) {
-  const preview = buildPageImageFromCitation(citation, pageImage);
+  const preview = buildPageImageFromCitation(citation, pageImage, {
+    highlightText:
+      sanitizeExcerptForDisplay(citation.excerpt, 480) || citation.excerpt,
+  });
   const imageSrc = preview.imageUrl ?? preview.url;
+  const caption =
+    sanitizeExcerptForDisplay(citation.excerpt, 110) || citation.excerpt;
 
   return (
     <button
@@ -49,7 +55,7 @@ export default function SourceCard({
           </div>
           <div className="h-[34%] px-2 py-1.5">
             <p className="line-clamp-2 text-[11px] leading-snug text-neutral-300">
-              {citation.excerpt}
+              {caption}
             </p>
           </div>
         </>
@@ -59,7 +65,7 @@ export default function SourceCard({
             p.{citation.pageNumber}
           </span>
           <p className="line-clamp-5 text-[11px] leading-snug text-neutral-300">
-            {citation.excerpt}
+            {caption}
           </p>
         </div>
       )}

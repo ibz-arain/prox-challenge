@@ -6,7 +6,9 @@ import AppNav from "@/components/AppNav";
 import { CHAT_PAGE_MAX_WIDTH_CLASS } from "@/lib/chatLayout";
 import SourceViewerPanel from "@/components/sources/SourceViewerPanel";
 import { buildPageImageFromCitation } from "@/lib/evidence";
+import { sanitizeExcerptForDisplay } from "@/lib/citationExcerpt";
 import { CHAT_SESSION_STORAGE_KEY } from "@/lib/chat-session-key";
+import { stripTrailingIncompleteArtifact } from "@/lib/artifactMarkup";
 import type {
   ChatMessage,
   Citation,
@@ -41,7 +43,8 @@ function buildSelectedSourceSnapshot(
         messageId,
         citation,
         pageImage: buildPageImageFromCitation(citation, pageImage, {
-          highlightText: citation.excerpt,
+          highlightText:
+            sanitizeExcerptForDisplay(citation.excerpt, 480) || citation.excerpt,
         }),
       };
     }
@@ -275,9 +278,17 @@ export default function Home() {
               window.clearTimeout(flushTimeoutId);
               flushTimeoutId = null;
             }
-            queuedDelta = "";
-            assistantText = typeof payload.text === "string" ? payload.text : assistantText;
-            if (!textStarted && assistantText.length > 0) {
+            if (queuedDelta) {
+              assistantText += queuedDelta;
+              queuedDelta = "";
+            }
+            const next =
+              typeof payload.text === "string" ? payload.text : assistantText;
+            assistantText =
+              next.trim().length > 0
+                ? next
+                : stripTrailingIncompleteArtifact(assistantText);
+            if (!textStarted && assistantText.trim().length > 0) {
               textStarted = true;
               setHasTextStarted(true);
             }

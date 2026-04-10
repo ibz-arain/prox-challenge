@@ -13,7 +13,7 @@ import MessageList from "./MessageList";
 import ChatComposer, { ComposerDock } from "./ChatComposer";
 import type { ChatMessage, SelectedSource } from "@/lib/types";
 
-const TYPEWRITER_PROMPT = "What do you need help with?";
+const LANDING_HEADLINE = "What do you need help with?";
 
 const LANDING_SUGGESTIONS: { id: string; query: string }[] = [
   {
@@ -33,24 +33,38 @@ const LANDING_SUGGESTIONS: { id: string; query: string }[] = [
   },
 ];
 
-const DOCK_MS = 640;
-const DOCK_EASING = "cubic-bezier(0.22, 1, 0.36, 1)";
+/** Landing → dock: longer, ease-out so the bar reads as sliding down with the text, not snapping. */
+const DOCK_MS = 960;
+const DOCK_EASING = "cubic-bezier(0.28, 0.9, 0.32, 1)";
 /** Fade landing chrome (heading + try asking) before the composer FLIP so nothing slides over the input. */
-const LANDING_CHROME_FADE_MS = 220;
+const LANDING_CHROME_FADE_MS = 280;
 
 type PendingSend = { text: string; image?: string; imageMimeType?: string };
 
 function TypewriterHeading({
   sessionKey,
   hidden,
+  reduceMotion,
+  onTypingStart,
 }: {
   sessionKey: number;
   hidden: boolean;
+  reduceMotion: boolean;
+  /** Fires once when typing begins (first char) or when reduced motion shows the headline. */
+  onTypingStart?: () => void;
 }) {
   const [typedPrompt, setTypedPrompt] = useState("");
+  const onStartRef = useRef(onTypingStart);
+  onStartRef.current = onTypingStart;
 
   useEffect(() => {
     if (hidden) return;
+    if (reduceMotion) {
+      setTypedPrompt(LANDING_HEADLINE);
+      queueMicrotask(() => onStartRef.current?.());
+      return;
+    }
+
     setTypedPrompt("");
     let cancelled = false;
     let timeoutId: number | undefined;
@@ -59,24 +73,31 @@ function TypewriterHeading({
       if (timeoutId !== undefined) window.clearTimeout(timeoutId);
     };
 
-    timeoutId = window.setTimeout(() => {
+    const run = () => {
       let pos = 0;
       const tick = () => {
         if (cancelled) return;
         pos += 1;
-        setTypedPrompt(TYPEWRITER_PROMPT.slice(0, pos));
-        if (pos >= TYPEWRITER_PROMPT.length) return;
+        setTypedPrompt(LANDING_HEADLINE.slice(0, pos));
+        if (pos === 1) {
+          onStartRef.current?.();
+        }
+        if (pos >= LANDING_HEADLINE.length) {
+          return;
+        }
         const delay = 45 + Math.random() * 55;
         timeoutId = window.setTimeout(tick, delay);
       };
       tick();
-    }, 350);
+    };
+
+    timeoutId = window.setTimeout(run, 0);
 
     return () => {
       cancelled = true;
       clearTimer();
     };
-  }, [sessionKey, hidden]);
+  }, [sessionKey, hidden, reduceMotion]);
 
   const displayPrompt = typedPrompt.length === 0 ? "\u00A0" : typedPrompt;
 
@@ -160,6 +181,8 @@ export default function ChatPanel({
   const [reduceMotion, setReduceMotion] = useState(false);
   const [threadEntered, setThreadEntered] = useState(false);
   const [portalHost, setPortalHost] = useState<HTMLElement | null>(null);
+  /** “Try asking” shows once headline typing has started (first character), in sync with input. */
+  const [landingTryAskingReady, setLandingTryAskingReady] = useState(false);
 
   const barRef = useRef<HTMLDivElement>(null);
   const firstRectRef = useRef<DOMRect | null>(null);
@@ -179,6 +202,14 @@ export default function ChatPanel({
     const onChange = () => setReduceMotion(mq.matches);
     mq.addEventListener("change", onChange);
     return () => mq.removeEventListener("change", onChange);
+  }, []);
+
+  useEffect(() => {
+    setLandingTryAskingReady(false);
+  }, [landingSessionKey]);
+
+  const handleHeadlineTypingStart = useCallback(() => {
+    setLandingTryAskingReady(true);
   }, []);
 
   useEffect(
@@ -254,7 +285,7 @@ export default function ChatPanel({
   useLayoutEffect(() => {
     const host = showDock ? dockHostRef.current : landingHostRef.current;
     setPortalHost((prev) => (prev === host ? prev : host));
-  }, [showDock]);
+  }, [showDock, landingSessionKey]);
 
   useLayoutEffect(() => {
     if (!docked || !pendingSendRef.current || !firstRectRef.current) return;
@@ -294,7 +325,7 @@ export default function ChatPanel({
       finishDock();
     };
 
-    const fallbackId = window.setTimeout(settle, DOCK_MS + 220);
+    const fallbackId = window.setTimeout(settle, DOCK_MS + 280);
 
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
@@ -392,6 +423,7 @@ export default function ChatPanel({
         <div className="sleek-scrollbar relative flex h-full min-h-0 flex-1 flex-col justify-center overflow-y-auto overflow-x-hidden bg-(--color-bg)">
           <div className="flex min-h-min flex-col justify-center px-4 py-8 sm:py-10">
             <div
+              key={landingSessionKey}
               className={`mx-auto flex w-full flex-col gap-8 sm:gap-10 ${CHAT_MAX_WIDTH_CLASS}`}
             >
               <div
@@ -410,33 +442,41 @@ export default function ChatPanel({
                 <TypewriterHeading
                   sessionKey={landingSessionKey}
                   hidden={fadeLandingChrome || docked}
+                  reduceMotion={reduceMotion}
+                  onTypingStart={handleHeadlineTypingStart}
                 />
               </div>
 
+              {/* Composer with input; “Try asking” appears when headline typing starts (first char). */}
               <div
-                ref={landingHostRef}
-                className={`relative z-30 w-full ${showDock ? "hidden" : ""}`}
-                aria-hidden={showDock}
-              />
-
-              <div
-                className={`overflow-hidden transition-[opacity,max-height] ease-out ${
+                className={`flex w-full flex-col gap-8 sm:gap-10 transition-opacity ease-out ${
+                  showDock ? "hidden" : ""
+                } ${
                   fadeLandingChrome || docked
-                    ? "pointer-events-none max-h-0 opacity-0"
-                    : "max-h-[2000px] opacity-100"
+                    ? "pointer-events-none opacity-0"
+                    : "opacity-100"
                 }`}
                 style={{
                   transitionDuration:
-                    fadeLandingChrome && !docked
+                    fadeLandingChrome || docked
                       ? `${LANDING_CHROME_FADE_MS}ms`
                       : "300ms",
                 }}
+                aria-hidden={showDock}
               >
-                <SuggestionRows
-                  suggestions={LANDING_SUGGESTIONS}
-                  disabled={landingBusy}
-                  onPick={(query) => beginSend(query)}
+                <div
+                  ref={landingHostRef}
+                  className="relative z-30 min-h-30 w-full shrink-0"
                 />
+                {landingTryAskingReady && (
+                  <div className="w-full min-h-0 overflow-hidden">
+                    <SuggestionRows
+                      suggestions={LANDING_SUGGESTIONS}
+                      disabled={landingBusy}
+                      onPick={(query) => beginSend(query)}
+                    />
+                  </div>
+                )}
               </div>
             </div>
           </div>

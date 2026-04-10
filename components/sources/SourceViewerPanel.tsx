@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ExternalLink, LoaderCircle, ScanSearch, X } from "lucide-react";
 import type { SelectedSource } from "@/lib/types";
 import { buildPageImageUrl } from "@/lib/evidence";
+import { sanitizeExcerptForDisplay } from "@/lib/citationExcerpt";
 
 interface SourceViewerPanelProps {
   source: SelectedSource;
@@ -57,17 +58,29 @@ export default function SourceViewerPanel({
   source,
   onClose,
 }: SourceViewerPanelProps) {
-  const supportingExcerpt =
+  const rawExcerpt =
     source.citation.excerpt || source.pageImage?.excerpt || "No excerpt available.";
-  const imageSrc = useMemo(
-    () =>
-      buildPageImageUrl(
-        source.citation.source,
-        source.citation.pageNumber,
-        supportingExcerpt
-      ),
-    [source.citation.pageNumber, source.citation.source, supportingExcerpt]
-  );
+  const supportingExcerpt =
+    sanitizeExcerptForDisplay(rawExcerpt, 620) || rawExcerpt;
+  const imageSrc = useMemo(() => {
+    if (source.pageImage?.imageUrl) return source.pageImage.imageUrl;
+    if (source.pageImage?.url) return source.pageImage.url;
+    const highlight =
+      sanitizeExcerptForDisplay(source.citation.excerpt || "", 480) ||
+      source.citation.excerpt ||
+      "";
+    return buildPageImageUrl(
+      source.citation.source,
+      source.citation.pageNumber,
+      highlight || undefined
+    );
+  }, [
+    source.citation.excerpt,
+    source.citation.pageNumber,
+    source.citation.source,
+    source.pageImage?.imageUrl,
+    source.pageImage?.url,
+  ]);
   const [imageState, setImageState] = useState<"loading" | "ready" | "error">("loading");
 
   useEffect(() => {

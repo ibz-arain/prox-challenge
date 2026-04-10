@@ -8,7 +8,10 @@ import { toolDefinitions, executeToolCall } from "./tools";
 import type { Citation, Artifact, PageImage, ChatMessage } from "../types";
 import { normalizeAnthropicImageMediaType } from "../imageMime";
 import { SOURCE_LABELS } from "../types";
-import { SIDEBAR_SAMPLE_PROMPTS } from "../suggestionBank";
+import {
+  injectCanonicalDiagramIfMissing,
+  injectTroubleshootingMermaidIfMissing,
+} from "../inferDiagramFromContext";
 
 const MAX_TOOL_ROUNDS = 2;
 const TOOL_TIMEOUT_MS = 12000;
@@ -34,25 +37,50 @@ type CreateResponseOptions = {
   streamText: boolean;
 };
 
+const ARTIFACT_TYPE_FIRST =
+  /<artifact\s+type\s*=\s*["']([^"']+)["']\s+title\s*=\s*["']([^"']+)["']\s*>([\s\S]*?)<\/artifact>/gi;
+const ARTIFACT_TITLE_FIRST =
+  /<artifact\s+title\s*=\s*["']([^"']+)["']\s+type\s*=\s*["']([^"']+)["']\s*>([\s\S]*?)<\/artifact>/gi;
+
 function parseArtifacts(text: string): {
   cleanText: string;
   artifacts: Artifact[];
 } {
   const artifacts: Artifact[] = [];
-  const artifactRegex =
-    /<artifact\s+type="([^"]+)"\s+title="([^"]+)">([\s\S]*?)<\/artifact>/g;
-  let match;
+  const seen = new Set<string>();
 
-  while ((match = artifactRegex.exec(text)) !== null) {
-    artifacts.push(normalizeArtifact({
-      type: match[1] as Artifact["type"],
-      title: match[2],
-      content: match[3].trim(),
-    }));
+  const pushArtifact = (type: string, title: string, body: string) => {
+    const key = `${type}\0${title}\0${body.slice(0, 200)}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    artifacts.push(
+      normalizeArtifact({
+        type: type as Artifact["type"],
+        title,
+        content: body.trim(),
+      })
+    );
+  };
+
+  let m: RegExpExecArray | null;
+  const reType = new RegExp(ARTIFACT_TYPE_FIRST.source, ARTIFACT_TYPE_FIRST.flags);
+  while ((m = reType.exec(text)) !== null) {
+    pushArtifact(m[1], m[2], m[3]);
+  }
+  const reTitle = new RegExp(ARTIFACT_TITLE_FIRST.source, ARTIFACT_TITLE_FIRST.flags);
+  while ((m = reTitle.exec(text)) !== null) {
+    pushArtifact(m[2], m[1], m[3]);
   }
 
-  const cleanText = text.replace(artifactRegex, "").trim();
+  const cleanText = text
+    .replace(new RegExp(ARTIFACT_TYPE_FIRST.source, ARTIFACT_TYPE_FIRST.flags), "")
+    .replace(new RegExp(ARTIFACT_TITLE_FIRST.source, ARTIFACT_TITLE_FIRST.flags), "")
+    .trim();
   return { cleanText, artifacts };
+}
+
+function normalizeFinalText(text: string): string {
+  return text.replace(/[\u200b\u200c\u200d\ufeff]/g, "").trim();
 }
 
 function buildFallbackAnswer(artifacts: Artifact[]): string {
@@ -72,6 +100,8 @@ function buildFallbackAnswer(artifacts: Artifact[]): string {
       return "Here is the calculator below.";
     case "step-list":
       return "Here are the steps below.";
+    case "mermaid":
+      return "Here is the diagram below.";
     case "table":
       return "Here are the exact numbers below.";
     default:
@@ -94,68 +124,6 @@ function extractTextFromResponseContent(
     .filter((block): block is Extract<(typeof content)[number], { type: "text" }> => block.type === "text")
     .map((block) => block.text)
     .join("");
-}
-
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-function buildCitationsTableArtifact(citations: Citation[]): Artifact {
-  const header = "| Page | Source | Excerpt |\n|------|--------|---------|";
-  const rows = citations.slice(0, 15).map((c) => {
-    const excerpt = c.excerpt.replace(/\|/g, "\\|").replace(/\s+/g, " ").trim();
-    const short = excerpt.length > 120 ? `${excerpt.slice(0, 120)}...` : excerpt;
-    return `| ${c.pageNumber} | ${c.sourceLabel.replace(/\|/g, "\\|")} | ${short} |`;
-  });
-  return {
-    type: "table",
-    title: "Manual sources used",
-    content: [header, ...rows].join("\n"),
-  };
-}
-
-function buildSuggestedPromptsArtifact(): Artifact {
-  const items = SIDEBAR_SAMPLE_PROMPTS.map(
-    (p) =>
-      `<li data-artifact-query="${escapeHtml(p.query)}"><strong>${escapeHtml(p.label)}</strong> — ${escapeHtml(p.query)}</li>`
-  ).join("");
-  return {
-    type: "artifact-html",
-    title: "Try asking about the OmniPro 220",
-    content: JSON.stringify({
-      html: `<div class="wrap"><p class="lead">Example questions — click one to load it into the message box:</p><ul class="list" data-suggestions>${items}</ul></div>`,
-      css: `.wrap{font-family:system-ui,-apple-system,sans-serif;padding:12px;color:#e5e7eb}.lead{color:#9ca3af;font-size:12px;margin:0 0 10px}.list{margin:0;padding-left:18px;font-size:13px;line-height:1.55}.list li{margin:8px 0}`,
-      height: 420,
-      suggestions: SIDEBAR_SAMPLE_PROMPTS.map((p) => ({
-        label: p.label,
-        query: p.query,
-      })),
-    }),
-  };
-}
-
-function ensureArtifacts(
-  artifacts: Artifact[],
-  citations: Citation[]
-): { artifacts: Artifact[]; injected: string[] } {
-  const out = [...artifacts];
-  const injected: string[] = [];
-
-  if (out.length === 0) {
-    if (citations.length > 0) {
-      out.push(buildCitationsTableArtifact(citations));
-      injected.push("citations-table");
-    } else {
-      out.push(buildSuggestedPromptsArtifact());
-      injected.push("suggested-prompts");
-    }
-  }
-
-  return { artifacts: out, injected };
 }
 
 function normalizeArtifact(artifact: Artifact): Artifact {
@@ -575,23 +543,46 @@ export async function runAgent(
   fullText += extractTextFromResponseContent(finalResponse.content);
 
   const { cleanText, artifacts } = parseArtifacts(fullText);
+  const diagramInjection = injectCanonicalDiagramIfMissing(
+    artifacts,
+    latestUserMessage,
+    cleanText
+  );
+  let mergedArtifacts = diagramInjection.artifacts;
+  if (diagramInjection.injectedId) {
+    logDebug("canonical diagram injected (model omitted visual artifact)", {
+      diagramId: diagramInjection.injectedId,
+    });
+  }
+  const troubleInjection = injectTroubleshootingMermaidIfMissing(
+    mergedArtifacts,
+    latestUserMessage,
+    cleanText
+  );
+  mergedArtifacts = troubleInjection.artifacts;
+  if (troubleInjection.injected) {
+    logDebug("troubleshooting mermaid injected (model omitted visual artifact)", {});
+  }
   logDebug("final response parsed", {
     rawTextLength: fullText.length,
     cleanTextLength: cleanText.length,
-    artifactCount: artifacts.length,
-    artifactTypes: artifacts.map((artifact) => artifact.type),
+    artifactCount: mergedArtifacts.length,
+    artifactTypes: mergedArtifacts.map((artifact) => artifact.type),
   });
 
-  let finalText = cleanText;
+  let finalText = normalizeFinalText(cleanText);
   if (!finalText) {
     try {
-      finalText = await recoverPlainTextAnswer();
+      finalText = normalizeFinalText(await recoverPlainTextAnswer());
     } catch (error) {
       console.error(DEBUG_PREFIX, "plain-text recovery failed", error);
     }
   }
 
-  finalText = finalText || buildFallbackAnswer(artifacts);
+  finalText = normalizeFinalText(finalText || buildFallbackAnswer(mergedArtifacts));
+  if (!finalText) {
+    finalText = buildFallbackAnswer(mergedArtifacts);
+  }
   logDebug("final text ready", {
     source:
       cleanText.length > 0
@@ -602,16 +593,8 @@ export async function runAgent(
     textLength: finalText.length,
   });
 
-  const ensured = ensureArtifacts(artifacts, allCitations);
-  if (ensured.injected.length > 0) {
-    logDebug("artifacts synthesized", {
-      injected: ensured.injected,
-      finalCount: ensured.artifacts.length,
-    });
-  }
-
   if (onArtifact) {
-    for (const artifact of ensured.artifacts) {
+    for (const artifact of mergedArtifacts) {
       await onArtifact(artifact);
     }
   }
@@ -619,7 +602,7 @@ export async function runAgent(
   return {
     text: finalText,
     citations: allCitations,
-    artifacts: ensured.artifacts,
+    artifacts: mergedArtifacts,
     pageImages: allPageImages,
   };
 }

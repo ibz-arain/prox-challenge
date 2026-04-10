@@ -4,6 +4,7 @@ import { pageImageExists } from "../ingest/page-renderer";
 import type { Citation, PageImage } from "../types";
 import { SOURCE_LABELS } from "../types";
 import { DIAGRAM_CATALOG, DIAGRAM_IDS } from "../diagrams/catalog";
+import { pickPageLeadExcerpt } from "../citationExcerpt";
 
 const WELDING_QUERY_REWRITES: Array<[RegExp, string]> = [
   [/\bmig\b/gi, "MIG GMAW"],
@@ -221,7 +222,7 @@ export const toolDefinitions: Anthropic.Messages.Tool[] = [
   {
     name: "get_diagram",
     description:
-      "Return a canonical SVG diagram for common polarity/connection questions. Use this before generating custom SVG for these known scenarios.",
+      "Return a canonical SVG as an optional reference for common polarity/connection layouts. Call when a diagram_id matches the user's scenario; otherwise emit your own svg-diagram or mermaid artifact grounded in the manual. Adapt labels and layout to the user's exact question when needed.",
     input_schema: {
       type: "object" as const,
       properties: {
@@ -353,7 +354,7 @@ export async function executeToolCall(
             page.source,
             page.sourceLabel,
             page.pageNumber,
-            page.text.slice(0, 200) + "..."
+            pickPageLeadExcerpt(page.text, 200)
           ),
         ],
       };
@@ -384,7 +385,7 @@ export async function executeToolCall(
             page.source,
             page.sourceLabel,
             page.pageNumber,
-            page.text.slice(0, 200) + "..."
+            pickPageLeadExcerpt(page.text, 200)
           )
         ),
       };
@@ -395,17 +396,17 @@ export async function executeToolCall(
       const source = (input.source as string) || "owner-manual";
       const hasImage = pageImageExists(source, pageNumber);
       const page = await getPageContent(pageNumber, source);
-      const excerpt = page?.text?.slice(0, 240);
+      const excerpt =
+        page?.text && page.text.length > 0
+          ? pickPageLeadExcerpt(page.text, 240)
+          : "";
 
       const pageImage: PageImage = {
         pageNumber,
         source,
         sourceLabel: SOURCE_LABELS[source] || source,
         url: `/api/pages/${source}/${pageNumber}`,
-        excerpt:
-          excerpt && page
-            ? `${excerpt}${page.text.length > 240 ? "..." : ""}`
-            : "",
+        excerpt,
       };
 
       return {
@@ -517,7 +518,7 @@ export async function executeToolCall(
       }
 
       return {
-        content: `Canonical diagram "${diagramId}" SVG:\n${svg}\n\nUse this SVG directly inside an <artifact type="svg-diagram"> block.`,
+        content: `Reference SVG for "${diagramId}" (canonical layout):\n${svg}\n\nUse inside <artifact type="svg-diagram"> when it matches, or adapt/redraw so the diagram fits the user's exact question and cited manual pages.`,
       };
     }
 

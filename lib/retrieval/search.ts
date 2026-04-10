@@ -5,6 +5,7 @@ import { buildIndex, saveIndex } from "../ingest/indexer";
 import { join } from "path";
 import { existsSync } from "fs";
 import type { PageData, SearchResult } from "../types";
+import { pickSearchExcerpt } from "../citationExcerpt";
 
 let cachedIndex: MiniSearch<PageData> | null = null;
 let cachedPages: PageData[] | null = null;
@@ -96,18 +97,14 @@ export async function searchManual(
       const page = pages.find((p) => p.id === r.id);
       const text = page?.text ?? "";
       const lowerText = text.toLowerCase();
-      let bestStart = 0;
       let keywordHits = 0;
       for (const word of queryWords) {
         const idx = lowerText.indexOf(word);
         if (idx !== -1) {
           keywordHits += 1;
-          if (bestStart === 0) {
-            bestStart = Math.max(0, idx - 80);
-          }
         }
       }
-      const excerpt = text.slice(bestStart, bestStart + 300).trim();
+      const excerpt = pickSearchExcerpt(text, query, 300);
       const sectionBonus =
         options?.sectionFilter && page?.section === options.sectionFilter ? 40 : 0;
       const keywordBonus = keywordHits * 10;
