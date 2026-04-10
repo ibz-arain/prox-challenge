@@ -392,12 +392,14 @@ export default function Home() {
               .filter((line) => line.startsWith("data:"))
               .map((line) => line.slice(5).trim());
             if (!dataLines.length) continue;
+            let payload: StreamEvent;
             try {
-              const payload = JSON.parse(dataLines.join("\n")) as StreamEvent;
-              applyEvent(payload);
+              payload = JSON.parse(dataLines.join("\n")) as StreamEvent;
             } catch {
-              // Ignore malformed chunks so stream can continue.
+              // Ignore malformed SSE data so the stream can continue.
+              continue;
             }
+            applyEvent(payload);
           }
         }
 
