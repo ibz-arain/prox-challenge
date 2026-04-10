@@ -16,7 +16,7 @@ const syne = Syne({
 });
 
 export const metadata: Metadata = {
-  title: "What do you need help with? · OmniPro 220",
+  title: "OmniPro",
   description:
     "AI-powered technical support for the Vulcan OmniPro 220 multiprocess welder",
 };

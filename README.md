@@ -6,12 +6,13 @@ Multimodal technical support for the **Vulcan OmniPro 220** multiprocess welder:
 
 | | |
 | --- | --- |
-| **Live app** | `https://YOUR_APP_URL` |
-| **Video walkthrough** | `https://www.youtube.com/watch?v=YOUR_VIDEO_ID` |
+| **Live app** | `https://prox-challenge-ibz-arain.vercel.app/` |
+| **Video walkthrough** | `https://www.youtube.com/watch?v=lpVg2lxntsc` |
 
 ## What it does
 
-- **Chat + evidence UI** — Ask in plain language. Replies stream in; the side panel shows **sources**, **page excerpts**, and **page images** from the PDFs.
+- **Chat + evidence UI** — Ask in plain language or **attach a photo** (panel, weld, error screen, wiring). The model can use the image together with the manuals. Replies stream in; the side panel shows **sources**, **page excerpts**, and **page images** from the PDFs.
+- **Starter prompts** — The landing UI includes suggested questions you can click to load into the chat.
 - **Product-scoped** — Off-topic questions get a short boundary response and suggested OmniPro questions, not a general chat rabbit hole.
 - **Manuals from `files/`** — PDFs are indexed locally; retrieval and page rendering power the agent tools.
 
