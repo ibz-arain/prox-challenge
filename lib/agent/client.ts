@@ -66,27 +66,52 @@ function errorMessage(err: unknown): string {
   return String(err);
 }
 
+/** Anthropic SDK / OpenRouter often attach the HTTP JSON body on the thrown object. */
+function messageFromThrownApiError(err: unknown): string | null {
+  if (typeof err !== "object" || err === null) return null;
+  const o = err as Record<string, unknown>;
+  const body = o.error;
+  if (body && typeof body === "object") {
+    const msg = (body as { message?: unknown }).message;
+    if (typeof msg === "string" && msg.trim()) return msg.trim();
+  }
+  return null;
+}
+
+function parseJsonErrorPayload(raw: string): string | null {
+  const brace = raw.indexOf("{");
+  if (brace === -1) return null;
+  try {
+    const parsed = JSON.parse(raw.slice(brace)) as {
+      error?: { message?: string };
+      message?: string;
+    };
+    const nested = parsed?.error?.message ?? parsed?.message;
+    if (typeof nested === "string" && nested.trim()) {
+      return nested.trim();
+    }
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
 /**
  * Pulls a human-readable message from Anthropic/OpenRouter JSON error bodies
  * (e.g. "400 {\"type\":\"error\",\"error\":{\"message\":\"...\"}}").
  */
 export function formatApiErrorForUser(err: unknown): string {
-  const raw = errorMessage(err);
-  const brace = raw.indexOf("{");
-  if (brace !== -1) {
-    try {
-      const parsed = JSON.parse(raw.slice(brace)) as {
-        error?: { message?: string };
-        message?: string;
-      };
-      const nested = parsed?.error?.message ?? parsed?.message;
-      if (typeof nested === "string" && nested.trim()) {
-        return nested.trim();
-      }
-    } catch {
-      /* keep raw */
-    }
+  const fromObject = messageFromThrownApiError(err);
+  if (fromObject) {
+    return fromObject;
   }
+
+  const raw = errorMessage(err);
+  const fromJson = parseJsonErrorPayload(raw);
+  if (fromJson) {
+    return fromJson;
+  }
+
   return raw;
 }
 

@@ -9,7 +9,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "TARA — OmniPro 220 Support",
+  title: "What do you need help with? · OmniPro 220",
   description:
     "AI-powered technical support for the Vulcan OmniPro 220 multiprocess welder",
 };

@@ -202,7 +202,10 @@ export async function executeToolCall(
         source,
         sourceLabel: SOURCE_LABELS[source] || source,
         url: `/api/pages/${source}/${pageNumber}`,
-        excerpt: excerpt ? `${excerpt}${page.text.length > 240 ? "..." : ""}` : "",
+        excerpt:
+          excerpt && page
+            ? `${excerpt}${page.text.length > 240 ? "..." : ""}`
+            : "",
       };
 
       return {

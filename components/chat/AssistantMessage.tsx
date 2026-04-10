@@ -1,7 +1,6 @@
 "use client";
 
 import React, { type ReactNode } from "react";
-import { Bot } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { ChatMessage } from "@/lib/types";
@@ -113,21 +112,27 @@ export default function AssistantMessage({
   };
 
   return (
-    <div className="flex gap-3">
-      <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-neutral-800 text-neutral-400 ring-1 ring-neutral-700">
-        <Bot size={16} strokeWidth={2} />
-      </div>
-      <div className="max-w-[94%] flex-1 sm:max-w-[85%]">
-        <div className="space-y-3">
-          {(isStreaming || statusTrail.length > 0) && (
-            <StatusTrail
-              statuses={statusTrail}
-              hasTextStarted={hasTextStarted}
-              isDone={streamComplete}
+    <div className="w-full min-w-0">
+      <div className="space-y-3">
+        {(isStreaming ||
+          statusTrail.length > 0 ||
+          streamComplete) && (
+          <StatusTrail
+            key={messageId}
+            statuses={statusTrail}
+            hasTextStarted={hasTextStarted}
+            isDone={streamComplete}
+          />
+        )}
+        <div className="prose-chat flex min-w-0 items-start gap-2 text-sm leading-relaxed">
+          {isStreaming && (
+            <span
+              className="mt-[6px] inline-block h-4 w-0.5 shrink-0 animate-pulse rounded-sm bg-brand/80 motion-reduce:animate-none"
+              aria-hidden
             />
           )}
-          <div className="prose-chat text-sm leading-relaxed">
-            <ReactMarkdown
+          <div className="min-w-0 flex-1 overflow-x-auto">
+          <ReactMarkdown
               remarkPlugins={[remarkGfm]}
               components={{
                 p: ({ children }) => (
@@ -142,13 +147,13 @@ export default function AssistantMessage({
                   const isBlock = className?.includes("language-");
                   if (isBlock) {
                     return (
-                      <pre className="my-2 overflow-x-auto rounded-xl border border-neutral-800 bg-neutral-900 p-3 shadow-sm">
+                      <pre className="my-2 overflow-x-auto rounded-xl border border-white/[0.08] bg-neutral-950/80 p-3 shadow-inner ring-1 ring-white/[0.04]">
                         <code className="font-mono text-xs text-neutral-200">{children}</code>
                       </pre>
                     );
                   }
                   return (
-                    <code className="rounded-lg bg-neutral-800 px-1.5 py-0.5 font-mono text-xs text-brand-hover ring-1 ring-neutral-700">
+                    <code className="rounded-md bg-neutral-800/90 px-1.5 py-0.5 font-mono text-xs text-brand-hover ring-1 ring-neutral-700/80">
                       {children}
                     </code>
                   );
@@ -182,34 +187,26 @@ export default function AssistantMessage({
             >
               {message.content}
             </ReactMarkdown>
-            {isStreaming && (
-              <span className="inline-flex items-center gap-2 text-neutral-500">
-                <span
-                  className="h-2 w-2 rounded-full bg-brand animate-pulse-breath"
-                  aria-hidden
-                />
-              </span>
-            )}
+          </div>
           </div>
 
-          {artifacts.length > 0 && (
-            <div className="space-y-3 border-t border-neutral-800/70 pt-3">
-              {artifacts.map((artifact, index) => (
-                <ArtifactContainer key={`${artifact.title}-${index}`}>
-                  <ArtifactRenderer artifact={artifact} />
-                </ArtifactContainer>
-              ))}
-            </div>
-          )}
+        {artifacts.length > 0 && (
+          <div className="space-y-3 border-t border-white/[0.06] pt-3">
+            {artifacts.map((artifact, index) => (
+              <ArtifactContainer key={`${artifact.title}-${index}`}>
+                <ArtifactRenderer artifact={artifact} />
+              </ArtifactContainer>
+            ))}
+          </div>
+        )}
 
-          <SourceRow
-            messageId={messageId}
-            citations={citations}
-            pageImages={pageImages}
-            visible={!isStreaming}
-            highlightedSourceId={highlightedSourceId}
-          />
-        </div>
+        <SourceRow
+          messageId={messageId}
+          citations={citations}
+          pageImages={pageImages}
+          visible={!isStreaming}
+          highlightedSourceId={highlightedSourceId}
+        />
       </div>
     </div>
   );

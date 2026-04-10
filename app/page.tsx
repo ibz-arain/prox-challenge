@@ -3,6 +3,7 @@
 import { useState, useCallback, useRef } from "react";
 import ChatPanel from "@/components/chat/ChatPanel";
 import AppNav from "@/components/AppNav";
+import { CHAT_PAGE_MAX_WIDTH_CLASS } from "@/lib/chatLayout";
 import type {
   ChatMessage,
   Citation,
@@ -16,22 +17,29 @@ function makeId(prefix: string) {
 }
 
 export default function Home() {
+  const [landingSessionKey, setLandingSessionKey] = useState(0);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [statusTrail, setStatusTrail] = useState<string[]>([]);
   const [hasTextStarted, setHasTextStarted] = useState(false);
   const [streamComplete, setStreamComplete] = useState(false);
-  const [pendingPrompt, setPendingPrompt] = useState<string | null>(null);
   const [highlightedSourceId, setHighlightedSourceId] = useState<string | null>(null);
   const clearTrailTimeoutRef = useRef<number | null>(null);
+  const streamAbortRef = useRef<AbortController | null>(null);
+
+  const cancelStream = useCallback(() => {
+    streamAbortRef.current?.abort();
+  }, []);
 
   const resetApp = useCallback(() => {
+    streamAbortRef.current?.abort();
+    streamAbortRef.current = null;
+    setLandingSessionKey((k) => k + 1);
     setMessages([]);
     setIsLoading(false);
     setStatusTrail([]);
     setHasTextStarted(false);
     setStreamComplete(false);
-    setPendingPrompt(null);
     setHighlightedSourceId(null);
     if (clearTrailTimeoutRef.current) {
       window.clearTimeout(clearTrailTimeoutRef.current);
@@ -64,11 +72,16 @@ export default function Home() {
         clearTrailTimeoutRef.current = null;
       }
 
+      streamAbortRef.current?.abort();
+      const ac = new AbortController();
+      streamAbortRef.current = ac;
+
       try {
         const response = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ messages: newMessages }),
+          signal: ac.signal,
         });
 
         if (!response.ok) {
@@ -216,6 +229,14 @@ export default function Home() {
           throw new Error("Response stream ended before completion.");
         }
       } catch (error) {
+        const aborted =
+          (error instanceof DOMException && error.name === "AbortError") ||
+          (error instanceof Error && error.name === "AbortError");
+        if (aborted) {
+          setStreamComplete(true);
+          return;
+        }
+
         const errMsg =
           error instanceof Error ? error.message : "Something went wrong";
         setMessages((prev) => {
@@ -237,6 +258,9 @@ export default function Home() {
           return [...next, fallbackMessage];
         });
       } finally {
+        if (streamAbortRef.current === ac) {
+          streamAbortRef.current = null;
+        }
         setIsLoading(false);
         if (clearTrailTimeoutRef.current) {
           window.clearTimeout(clearTrailTimeoutRef.current);
@@ -249,31 +273,24 @@ export default function Home() {
     [hasTextStarted, messages]
   );
 
-  const handleWelcomePrompt = useCallback(
-    (prompt: string) => {
-      if (isLoading) return;
-      setPendingPrompt(prompt);
-    },
-    [isLoading]
-  );
-
   return (
-    <div className="relative flex h-screen flex-col overflow-hidden bg-black">
+    <div className="relative flex h-screen flex-col overflow-hidden bg-[var(--color-bg)]">
       <AppNav onHome={resetApp} />
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden pt-16">
-        <div className="mx-auto flex h-full w-full max-w-6xl min-w-0 flex-col bg-neutral-950">
+        <div
+          className={`mx-auto flex h-full w-full min-w-0 flex-col bg-[var(--color-bg)] ${CHAT_PAGE_MAX_WIDTH_CLASS}`}
+        >
           <ChatPanel
+            landingSessionKey={landingSessionKey}
             messages={messages}
             isLoading={isLoading}
             statusTrail={statusTrail}
             hasTextStarted={hasTextStarted}
             streamComplete={streamComplete}
-            pendingPrompt={pendingPrompt}
             highlightedSourceId={highlightedSourceId}
             onHighlightSource={setHighlightedSourceId}
-            onPendingPromptHandled={() => setPendingPrompt(null)}
-            onWelcomePrompt={handleWelcomePrompt}
             onSend={sendMessage}
+            onCancel={cancelStream}
           />
         </div>
       </div>

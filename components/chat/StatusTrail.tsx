@@ -1,9 +1,80 @@
 "use client";
 
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  BookOpen,
+  ChevronRight,
+  CircleDot,
+  FileSearch,
+  Image as ImageIcon,
+  Loader2,
+  Search,
+  Sparkles,
+  Wrench,
+} from "lucide-react";
+
 interface StatusTrailProps {
   statuses: string[];
   hasTextStarted: boolean;
   isDone: boolean;
+}
+
+function iconForLine(line: string) {
+  const l = line.toLowerCase();
+  if (l.includes("synthesiz")) return Sparkles;
+  if (l.includes("searching") || l.includes("search")) return Search;
+  if (l.includes("reading")) return BookOpen;
+  if (l.includes("pulling") || l.includes("diagram") || l.includes("loading"))
+    return ImageIcon;
+  if (l.includes("found")) return FileSearch;
+  if (l.includes("spec") || l.includes("looking up")) return Wrench;
+  return CircleDot;
+}
+
+const LINE_LEADING = "text-[13px] leading-snug";
+
+function StatusLine({
+  line,
+  latest,
+  toolsInProgress,
+}: {
+  line: string;
+  latest: boolean;
+  toolsInProgress: boolean;
+}) {
+  const Icon = iconForLine(line);
+  return (
+    <li className="flex min-w-0 gap-2">
+      <span
+        className={`inline-flex h-4.5 shrink-0 items-center text-neutral-500 ${
+          toolsInProgress ? "text-brand-hover" : ""
+        }`}
+        aria-hidden
+      >
+        {toolsInProgress ? (
+          <Loader2 className="h-3.5 w-3.5 animate-spin stroke-2" />
+        ) : (
+          <Icon className="h-3.5 w-3.5 stroke-2" />
+        )}
+      </span>
+      <span
+        className={`min-w-0 flex-1 ${LINE_LEADING} ${
+          latest ? "text-neutral-200" : "text-neutral-500"
+        } ${toolsInProgress ? "chat-status-shine" : ""}`}
+      >
+        {line}
+      </span>
+    </li>
+  );
+}
+
+function thinkingSecondsFromRefs(
+  phaseStart: number | null,
+  thinkingEnd: number | null
+): number {
+  const end = thinkingEnd ?? Date.now();
+  const start = phaseStart ?? end;
+  return Math.max(1, Math.round((end - start) / 1000));
 }
 
 export default function StatusTrail({
@@ -11,80 +82,120 @@ export default function StatusTrail({
   hasTextStarted,
   isDone,
 }: StatusTrailProps) {
-  if (statuses.length === 0) return null;
+  const [expanded, setExpanded] = useState(false);
+  const [persisted, setPersisted] = useState<{
+    lines: string[];
+    seconds: number;
+  } | null>(null);
+
+  const phaseStartRef = useRef<number | null>(null);
+  const thinkingEndRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (statuses.length === 0) return;
+    if (phaseStartRef.current === null) {
+      phaseStartRef.current = Date.now();
+    }
+  }, [statuses.length]);
+
+  useEffect(() => {
+    if (hasTextStarted && thinkingEndRef.current === null) {
+      thinkingEndRef.current = Date.now();
+    }
+  }, [hasTextStarted]);
+
+  useLayoutEffect(() => {
+    if (!isDone || persisted) return;
+    if (statuses.length === 0) return;
+    setPersisted({
+      lines: [...statuses],
+      seconds: thinkingSecondsFromRefs(
+        phaseStartRef.current,
+        thinkingEndRef.current
+      ),
+    });
+  }, [isDone, statuses, persisted]);
+
+  if (statuses.length === 0 && !persisted) {
+    return null;
+  }
+
+  const collapseData =
+    persisted ??
+    (isDone && statuses.length > 0
+      ? {
+          lines: [...statuses],
+          seconds: thinkingSecondsFromRefs(
+            phaseStartRef.current,
+            thinkingEndRef.current
+          ),
+        }
+      : null);
+
+  if (isDone) {
+    if (!collapseData) {
+      return null;
+    }
+    return (
+      <div className="mb-2 min-w-0" aria-label="Assistant thinking summary">
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="flex w-full min-w-0 items-center gap-1.5 rounded-md py-1 text-left text-[13px] transition-colors hover:text-neutral-300 focus:outline-none focus-visible:text-neutral-200"
+          aria-expanded={expanded}
+        >
+          <ChevronRight
+            className={`h-4 w-4 shrink-0 text-neutral-600 transition-transform duration-200 ${
+              expanded ? "rotate-90" : ""
+            }`}
+            aria-hidden
+          />
+          <span className="min-w-0 truncate text-neutral-400">
+            Thinking · {collapseData.seconds}s
+          </span>
+        </button>
+        {expanded && (
+          <ul className="mt-2 space-y-2 border-l border-white/10 pl-3">
+            {collapseData.lines.map((line, index) => (
+              <StatusLine
+                key={`${index}-${line.slice(0, 32)}`}
+                line={line}
+                latest={index === collapseData.lines.length - 1}
+                toolsInProgress={false}
+              />
+            ))}
+          </ul>
+        )}
+      </div>
+    );
+  }
 
   const visibleStatuses = hasTextStarted ? statuses.slice(-1) : statuses;
+  const isLatest = (index: number) => index === visibleStatuses.length - 1;
+  const streamActive = statuses.length > 0;
 
   return (
     <div
-      className={`status-trail overflow-hidden rounded-xl border border-neutral-800 bg-neutral-900/70 transition-all duration-400 ease-in-out ${
-        hasTextStarted ? "max-h-10 opacity-60" : "max-h-[200px] opacity-100"
-      } ${isDone ? "pointer-events-none opacity-0 transition-opacity duration-300" : ""}`}
+      className="mb-2 min-w-0"
+      aria-live="polite"
+      aria-label="Assistant activity"
     >
-      <div className="px-3 py-2.5">
-        <div className="space-y-1.5">
-          {visibleStatuses.map((status, index) => {
-            const actualIndex = hasTextStarted
-              ? statuses.length - 1
-              : index;
-            const isActive = !isDone && actualIndex === statuses.length - 1;
-            const isCompleted = actualIndex < statuses.length - 1 || isDone;
-            return (
-              <div
-                key={`${status}-${actualIndex}`}
-                className="flex translate-y-0 items-start gap-2 text-xs text-neutral-400 opacity-100 transition-all duration-150 ease-out"
-              >
-                <span
-                  className={`mt-0.5 inline-flex h-3 w-3 shrink-0 items-center justify-center rounded-full border text-[10px] leading-none ${
-                    isCompleted
-                      ? "border-neutral-600 text-neutral-500"
-                      : "border-brand/60 text-brand"
-                  }`}
-                  aria-hidden
-                >
-                  {isCompleted ? "✓" : ""}
-                  {!isCompleted && (
-                    <span className={`h-1.5 w-1.5 rounded-full bg-brand ${isActive ? "trail-pulse" : ""}`} />
-                  )}
-                </span>
-                <span className={isCompleted ? "text-neutral-500" : "text-neutral-300"}>
-                  {status}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-      <style jsx>{`
-        .status-trail {
-          transform: translateY(0);
-        }
-        .trail-pulse {
-          animation: trailPulse 1.3s ease-in-out infinite;
-        }
-        @keyframes trailPulse {
-          0% {
-            opacity: 0.45;
-            transform: scale(0.9);
-          }
-          50% {
-            opacity: 1;
-            transform: scale(1.05);
-          }
-          100% {
-            opacity: 0.45;
-            transform: scale(0.9);
-          }
-        }
-      `}</style>
-      <style jsx global>{`
-        @media (prefers-reduced-motion: reduce) {
-          * {
-            transition-duration: 0.01ms !important;
-            animation: none !important;
-          }
-        }
-      `}</style>
+      <ul className="space-y-2">
+        {visibleStatuses.map((line, index) => {
+          const latest = isLatest(index);
+          const toolsInProgress = Boolean(
+            latest && streamActive && !hasTextStarted
+          );
+          return (
+            <StatusLine
+              key={`${index}-${line.slice(0, 24)}`}
+              line={line}
+              latest={latest}
+              toolsInProgress={toolsInProgress}
+            />
+          );
+        })}
+      </ul>
     </div>
   );
 }

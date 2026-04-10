@@ -1,6 +1,5 @@
 "use client";
 
-import { User } from "lucide-react";
 import type { ChatMessage } from "@/lib/types";
 
 interface UserMessageProps {
@@ -9,25 +8,20 @@ interface UserMessageProps {
 
 export default function UserMessage({ message }: UserMessageProps) {
   return (
-    <div className="flex flex-row-reverse gap-3">
-      <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-brand text-white">
-        <User size={16} strokeWidth={2} />
-      </div>
-      <div className="max-w-[94%] flex-1 text-right sm:max-w-[85%]">
-        <div className="inline-block text-left">
-          {message.image && (
-            <div className="mb-2 inline-block overflow-hidden rounded-xl border border-neutral-800 shadow-sm">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={`data:image/jpeg;base64,${message.image}`}
-                alt="Uploaded"
-                className="max-h-[150px] max-w-[200px] object-cover"
-              />
-            </div>
-          )}
-          <div className="rounded-xl rounded-tr-md bg-neutral-800 px-4 py-3 text-sm leading-relaxed text-neutral-100 shadow-sm ring-1 ring-neutral-700">
-            {message.content}
+    <div className="flex justify-end">
+      <div className="max-w-[min(100%,36rem)] text-right">
+        {message.image && (
+          <div className="mb-2 inline-block overflow-hidden rounded-xl border border-white/[0.1] shadow-sm ring-1 ring-white/[0.04]">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={`data:image/jpeg;base64,${message.image}`}
+              alt=""
+              className="max-h-[160px] max-w-[240px] object-cover"
+            />
           </div>
+        )}
+        <div className="inline-block rounded-2xl border border-white/[0.1] bg-[var(--color-user-bubble)] px-4 py-2.5 text-left text-[15px] leading-relaxed text-neutral-100 shadow-sm ring-1 ring-white/[0.04]">
+          {message.content}
         </div>
       </div>
     </div>

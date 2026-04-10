@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { CHAT_GUTTER_X_CLASS, CHAT_MAX_WIDTH_CLASS } from "@/lib/chatLayout";
 import type { ChatMessage } from "@/lib/types";
 import UserMessage from "./UserMessage";
 import AssistantMessage from "./AssistantMessage";
-import WelcomeState from "../WelcomeState";
 
 interface MessageListProps {
   messages: ChatMessage[];
@@ -14,7 +14,8 @@ interface MessageListProps {
   streamComplete: boolean;
   highlightedSourceId?: string | null;
   onHighlightSource: (sourceId: string) => void;
-  onWelcomePrompt: (prompt: string) => void;
+  /** Enables entrance motion after first message (landing → thread). */
+  enterReady?: boolean;
 }
 
 export default function MessageList({
@@ -25,7 +26,7 @@ export default function MessageList({
   streamComplete,
   highlightedSourceId,
   onHighlightSource,
-  onWelcomePrompt,
+  enterReady = true,
 }: MessageListProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [autoScrollEnabled, setAutoScrollEnabled] = useState(true);
@@ -69,12 +70,16 @@ export default function MessageList({
     <div
       ref={scrollRef}
       onScroll={handleScroll}
-      className="sleek-scrollbar flex-1 space-y-6 overflow-y-auto px-4 py-6 sm:px-6"
+      className={`sleek-scrollbar flex-1 space-y-10 overflow-y-auto pb-40 pt-6 ${CHAT_GUTTER_X_CLASS}`}
     >
-      {messages.length === 0 ? (
-        <WelcomeState onSelectPrompt={onWelcomePrompt} disabled={isLoading} />
-      ) : (
-        messages.map((message, index) =>
+      <div
+        className={`mx-auto min-w-0 w-full space-y-10 transition-[opacity,transform] duration-500 ease-out motion-reduce:transition-none ${CHAT_MAX_WIDTH_CLASS} ${
+          enterReady
+            ? "translate-y-0 opacity-100"
+            : "translate-y-3 opacity-0 motion-reduce:translate-y-0 motion-reduce:opacity-100"
+        }`}
+      >
+        {messages.map((message, index) =>
           message.role === "user" ? (
             <UserMessage key={message.id ?? `user-${index}`} message={message} />
           ) : (
@@ -89,8 +94,8 @@ export default function MessageList({
               onHighlightSource={onHighlightSource}
             />
           )
-        )
-      )}
+        )}
+      </div>
     </div>
   );
 }
