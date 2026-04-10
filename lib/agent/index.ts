@@ -14,7 +14,8 @@ import {
 } from "../inferDiagramFromContext";
 
 const MAX_TOOL_ROUNDS = 2;
-const TOOL_TIMEOUT_MS = 12000;
+/** Per-tool ceiling. First request on Vercel can spend 20–40s+ building the PDF index; 12s falsely looked like "manual timed out". Keep below `maxDuration` in app/api/chat/route.ts (60s). */
+const TOOL_TIMEOUT_MS = Number(process.env.TOOL_TIMEOUT_MS) || 50000;
 const DEBUG_PREFIX = "[omni-agent]";
 
 interface AgentResult {
@@ -491,7 +492,7 @@ export async function runAgent(
           TOOL_TIMEOUT_MS,
           () => ({
             content:
-              "This lookup timed out. Continue with the other evidence and say the result may be incomplete.",
+              "This tool step exceeded the server time limit (often first-time PDF indexing on a cold server). Do not claim the manual is missing. Say the user should retry once—after that, retrieval is usually fast—and keep any citations you already have.",
             citations: [],
             pageImages: [],
           })

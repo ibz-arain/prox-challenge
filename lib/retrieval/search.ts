@@ -10,6 +10,12 @@ import { pickSearchExcerpt } from "../citationExcerpt";
 let cachedIndex: MiniSearch<PageData> | null = null;
 let cachedPages: PageData[] | null = null;
 
+/** One in-flight build when the agent calls several tools in parallel — avoids triple PDF parse and triple load. */
+let ensureIndexPromise: Promise<{
+  index: MiniSearch<PageData>;
+  pages: PageData[];
+}> | null = null;
+
 async function ensureIndex(): Promise<{
   index: MiniSearch<PageData>;
   pages: PageData[];
@@ -33,18 +39,26 @@ async function ensureIndex(): Promise<{
     );
   }
 
-  console.log("Auto-ingesting manuals on first request...");
-  const parseResult = await parseAllPdfs(filesDir);
-  const pages = parseResult.pages;
-  console.log(
-    `Auto-ingest extraction mix: ${parseResult.textExtractedPages} text, ${parseResult.visionExtractedPages} vision, ${parseResult.visionFailedPages} vision-failed`
-  );
-  const index = buildIndex(pages);
-  saveIndex(index, pages);
+  if (!ensureIndexPromise) {
+    ensureIndexPromise = (async () => {
+      console.log("Auto-ingesting manuals on first request...");
+      const parseResult = await parseAllPdfs(filesDir);
+      const pages = parseResult.pages;
+      console.log(
+        `Auto-ingest extraction mix: ${parseResult.textExtractedPages} text, ${parseResult.visionExtractedPages} vision, ${parseResult.visionFailedPages} vision-failed`
+      );
+      const index = buildIndex(pages);
+      saveIndex(index, pages);
 
-  cachedIndex = index;
-  cachedPages = pages;
-  return { index, pages };
+      cachedIndex = index;
+      cachedPages = pages;
+      return { index, pages };
+    })().finally(() => {
+      ensureIndexPromise = null;
+    });
+  }
+
+  return ensureIndexPromise;
 }
 
 export async function searchManual(
