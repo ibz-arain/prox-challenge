@@ -54,5 +54,3 @@ npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000). The chat model is `claude-sonnet-4-20250514`.
-
-Optional: `npm run ingest` to build manuals before the first chat. Optional: `npm run eval` for the script in [`scripts/eval.ts`](scripts/eval.ts).
