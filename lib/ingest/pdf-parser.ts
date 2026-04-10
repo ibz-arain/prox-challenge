@@ -3,12 +3,15 @@ import { join, basename } from "path";
 import type { PageData } from "../types";
 import { getCreateCanvas } from "./canvas-factory";
 import { extractPageTextWithVision } from "./vision-extractor";
+import { configureLegacyPdfjsWorker } from "./pdfjs-server";
 
-let pdfjsLib: typeof import("pdfjs-dist") | null = null;
+let pdfjsLib: typeof import("pdfjs-dist/legacy/build/pdf.mjs") | null = null;
 
 async function getPdfjs() {
   if (!pdfjsLib) {
-    pdfjsLib = await import("pdfjs-dist");
+    const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+    configureLegacyPdfjsWorker(pdfjs);
+    pdfjsLib = pdfjs;
   }
   return pdfjsLib;
 }

@@ -8,6 +8,7 @@ import {
 import { join, basename } from "path";
 import type { PageData } from "../types";
 import { getCreateCanvas } from "./canvas-factory";
+import { configureLegacyPdfjsWorker } from "./pdfjs-server";
 
 const FILES_DIR = join(process.cwd(), "files");
 const GENERATED_DIR = join(process.cwd(), "generated");
@@ -248,6 +249,7 @@ export async function renderPageToPng(
   }
 
   const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  configureLegacyPdfjsWorker(pdfjs);
   const data = new Uint8Array(readFileSync(pdfPath));
   const doc = await pdfjs.getDocument({ data, useSystemFonts: true }).promise;
 
@@ -355,6 +357,7 @@ async function renderPagesToDirectory(
   }
 
   const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  configureLegacyPdfjsWorker(pdfjs);
   const files = readdirSync(filesDir).filter((f) => f.endsWith(".pdf"));
   let rendered = 0;
 
@@ -437,6 +440,7 @@ export async function renderPageImages(filesDir: string): Promise<number> {
     }
 
     const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+    configureLegacyPdfjsWorker(pdfjs);
     let rendered = 0;
 
     for (const file of files) {
