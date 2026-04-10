@@ -14,28 +14,28 @@ import {
   CHAT_GUTTER_X_CLASS,
   CHAT_MAX_WIDTH_CLASS,
   CHAT_PAGE_MAX_WIDTH_CLASS,
-  CHAT_SPLIT_MAX_WIDTH_CLASS,
 } from "@/lib/chatLayout";
 
-/** Thread: fixed bottom fade so messages scroll under. */
+/**
+ * Thread: bottom fade + composer aligned to the chat column (not the viewport).
+ * Uses `absolute` inside `ChatPanel`’s `relative` shell so width matches `max-w-6xl` + flex row layout.
+ */
 export function ComposerDock({
   children,
   className = "",
-  split = false,
 }: {
   children: ReactNode;
   className?: string;
-  split?: boolean;
 }) {
   return (
     <div
-      className={`pointer-events-none fixed inset-x-0 bottom-0 z-40 flex justify-center bg-linear-to-t from-(--color-bg) via-(--color-bg)/92 to-transparent pb-4 pt-20 ${className}`}
+      className={`pointer-events-none absolute inset-x-0 bottom-0 z-40 flex justify-center bg-linear-to-t from-(--color-bg) via-(--color-bg)/92 to-transparent pb-4 pt-20 md:right-2 ${className}`}
     >
       <div
-        className={`pointer-events-auto mx-auto w-full ${CHAT_PAGE_MAX_WIDTH_CLASS} ${CHAT_GUTTER_X_CLASS}`}
+        className={`pointer-events-auto mx-auto w-full transition-[max-width,padding,margin] duration-300 ease-out ${CHAT_PAGE_MAX_WIDTH_CLASS} ${CHAT_GUTTER_X_CLASS}`}
       >
         <div
-          className={`w-full ${split ? `mr-auto ${CHAT_SPLIT_MAX_WIDTH_CLASS}` : `mx-auto ${CHAT_MAX_WIDTH_CLASS}`}`}
+          className={`mx-auto w-full transition-[max-width] duration-300 ease-out ${CHAT_MAX_WIDTH_CLASS}`}
         >
           {children}
         </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import type { Citation, PageImage } from "@/lib/types";
+import { buildPageImageFromCitation } from "@/lib/evidence";
 
 interface SourceCardProps {
   citation: Citation;
@@ -21,7 +22,8 @@ export default function SourceCard({
   anchorId,
   active = false,
 }: SourceCardProps) {
-  const imageSrc = pageImage?.imageUrl ?? pageImage?.url;
+  const preview = buildPageImageFromCitation(citation, pageImage);
+  const imageSrc = preview.imageUrl ?? preview.url;
 
   return (
     <button

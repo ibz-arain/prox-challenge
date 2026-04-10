@@ -81,6 +81,17 @@ body {
     background-color: rgb(115 115 115 / 0.85);
   }
 
+  /**
+   * Chat thread: prefer overlay vertical scrolling so the bar paints on top of content
+   * (no ~3px layout gutter, no drift vs the centered column). Invalid `overlay` is
+   * ignored so `auto` remains in engines that dropped it (e.g. modern Chrome).
+   */
+  .chat-thread-scroller {
+    overflow-x: hidden;
+    overflow-y: auto;
+    overflow-y: overlay;
+  }
+
   .animate-pulse-breath {
     animation: pulse-animation 900ms ease-in-out infinite;
   }

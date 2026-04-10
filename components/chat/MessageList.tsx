@@ -1,7 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CHAT_GUTTER_X_CLASS, CHAT_MAX_WIDTH_CLASS } from "@/lib/chatLayout";
+import {
+  CHAT_GUTTER_X_CLASS,
+  CHAT_MAX_WIDTH_CLASS,
+} from "@/lib/chatLayout";
 import type { ChatMessage, SelectedSource } from "@/lib/types";
 import UserMessage from "./UserMessage";
 import AssistantMessage from "./AssistantMessage";
@@ -18,6 +21,8 @@ interface MessageListProps {
   onSelectSource: (source: SelectedSource) => void;
   /** Enables entrance motion after first message (landing → thread). */
   enterReady?: boolean;
+  /** On mobile, the evidence sheet overlays from the bottom — add extra scroll room. */
+  evidenceOpen?: boolean;
 }
 
 export default function MessageList({
@@ -31,6 +36,7 @@ export default function MessageList({
   selectedSourceId,
   onSelectSource,
   enterReady = true,
+  evidenceOpen = false,
 }: MessageListProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [autoScrollEnabled, setAutoScrollEnabled] = useState(true);
@@ -74,7 +80,7 @@ export default function MessageList({
     <div
       ref={scrollRef}
       onScroll={handleScroll}
-      className={`space-y-10 pb-40 pt-6 ${CHAT_GUTTER_X_CLASS}`}
+      className={`chat-thread-scroller sleek-scrollbar min-h-0 flex-1 space-y-10 overscroll-contain pt-6 pb-40 ${evidenceOpen ? "max-md:pb-[min(48vh,28rem)]" : ""} ${CHAT_GUTTER_X_CLASS}`}
     >
       <div
         className={`mx-auto min-w-0 w-full space-y-10 transition-[opacity,transform] duration-500 ease-out motion-reduce:transition-none ${CHAT_MAX_WIDTH_CLASS} ${

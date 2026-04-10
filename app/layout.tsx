@@ -1,11 +1,18 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Inter, Syne } from "next/font/google";
 import "./globals.css";
 
 const inter = Inter({
   subsets: ["latin"],
   variable: "--font-sans",
   display: "swap",
+});
+
+const syne = Syne({
+  subsets: ["latin"],
+  variable: "--font-brand",
+  display: "swap",
+  weight: ["600", "700", "800"],
 });
 
 export const metadata: Metadata = {
@@ -20,8 +27,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={inter.variable}>
-      <body className="antialiased text-neutral-200 bg-black leading-relaxed">
+    <html lang="en" className={`${inter.variable} ${syne.variable}`}>
+      <body className="flex h-dvh flex-col overflow-hidden antialiased text-neutral-200 bg-black leading-relaxed">
         {children}
       </body>
     </html>

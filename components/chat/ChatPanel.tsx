@@ -10,7 +10,6 @@ import {
 import {
   CHAT_MAX_WIDTH_CLASS,
   CHAT_PAGE_MAX_WIDTH_CLASS,
-  CHAT_SPLIT_MAX_WIDTH_CLASS,
 } from "@/lib/chatLayout";
 import MessageList from "./MessageList";
 import ChatComposer, { ComposerDock } from "./ChatComposer";
@@ -38,6 +37,8 @@ const LANDING_SUGGESTIONS: { id: string; query: string }[] = [
 
 const DOCK_MS = 560;
 const DOCK_EASING = "cubic-bezier(0.25, 0.82, 0.2, 1)";
+/** Fade landing chrome (heading + try asking) before the composer FLIP so nothing slides over the input. */
+const LANDING_CHROME_FADE_MS = 220;
 
 type PendingSend = { text: string; image?: string };
 
@@ -132,7 +133,6 @@ interface ChatPanelProps {
   onHighlightSource: (sourceId: string) => void;
   selectedSourceId?: string | null;
   onSelectSource: (source: SelectedSource) => void;
-  splitView?: boolean;
   onSend: (message: string, image?: string) => void;
   onCancel?: () => void;
 }
@@ -148,18 +148,19 @@ export default function ChatPanel({
   onHighlightSource,
   selectedSourceId,
   onSelectSource,
-  splitView = false,
   onSend,
   onCancel,
 }: ChatPanelProps) {
   const [docked, setDocked] = useState(false);
   const [dockLocked, setDockLocked] = useState(false);
+  const [fadeLandingChrome, setFadeLandingChrome] = useState(false);
   const [reduceMotion, setReduceMotion] = useState(false);
   const [threadEntered, setThreadEntered] = useState(false);
 
   const barRef = useRef<HTMLDivElement>(null);
   const firstRectRef = useRef<DOMRect | null>(null);
   const pendingSendRef = useRef<PendingSend | null>(null);
+  const dockDelayTimeoutRef = useRef<number | undefined>(undefined);
 
   useEffect(() => {
     const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -169,6 +170,16 @@ export default function ChatPanel({
     return () => mq.removeEventListener("change", onChange);
   }, []);
 
+  useEffect(
+    () => () => {
+      if (dockDelayTimeoutRef.current !== undefined) {
+        window.clearTimeout(dockDelayTimeoutRef.current);
+        dockDelayTimeoutRef.current = undefined;
+      }
+    },
+    []
+  );
+
   const prevMessageCountRef = useRef<number | null>(null);
   const threadEntrancePrevLenRef = useRef(0);
 
@@ -176,8 +187,13 @@ export default function ChatPanel({
     const prev = prevMessageCountRef.current;
     prevMessageCountRef.current = messages.length;
     if (prev !== null && prev > 0 && messages.length === 0) {
+      if (dockDelayTimeoutRef.current !== undefined) {
+        window.clearTimeout(dockDelayTimeoutRef.current);
+        dockDelayTimeoutRef.current = undefined;
+      }
       setDocked(false);
       setDockLocked(false);
+      setFadeLandingChrome(false);
       pendingSendRef.current = null;
       firstRectRef.current = null;
       setThreadEntered(false);
@@ -304,14 +320,21 @@ export default function ChatPanel({
       firstRectRef.current = el.getBoundingClientRect();
       pendingSendRef.current = { text: q || "What is this?", image };
       setDockLocked(true);
-      setDocked(true);
+      setFadeLandingChrome(true);
+      if (dockDelayTimeoutRef.current !== undefined) {
+        window.clearTimeout(dockDelayTimeoutRef.current);
+      }
+      dockDelayTimeoutRef.current = window.setTimeout(() => {
+        dockDelayTimeoutRef.current = undefined;
+        setDocked(true);
+      }, LANDING_CHROME_FADE_MS);
     },
     [isLoading, dockLocked, reduceMotion, onSend]
   );
 
   if (messages.length > 0) {
     return (
-      <div className="relative flex w-full flex-col bg-(--color-bg)">
+      <div className="relative flex min-h-0 w-full flex-1 flex-col overflow-hidden bg-(--color-bg)">
         <MessageList
           messages={messages}
           isLoading={isLoading}
@@ -323,8 +346,9 @@ export default function ChatPanel({
           selectedSourceId={selectedSourceId}
           onSelectSource={onSelectSource}
           enterReady={threadEntered}
+          evidenceOpen={!!selectedSourceId}
         />
-        <ComposerDock split={splitView}>
+        <ComposerDock>
           <ChatComposer
             mode="thread"
             onSend={onSend}
@@ -340,25 +364,27 @@ export default function ChatPanel({
   const landingBusy = isLoading || dockLocked;
 
   return (
-    <div className="relative flex h-full min-h-0 flex-1 flex-col justify-center bg-(--color-bg)">
-      <div className="flex flex-col justify-center px-4 py-8 sm:py-10">
+    <div className="sleek-scrollbar relative flex h-full min-h-0 flex-1 flex-col justify-center overflow-y-auto overflow-x-hidden bg-(--color-bg)">
+      <div className="flex min-h-min flex-col justify-center px-4 py-8 sm:py-10">
         <div
-          className={`flex w-full flex-col gap-8 sm:gap-10 ${
-            splitView
-              ? `mr-auto ${CHAT_SPLIT_MAX_WIDTH_CLASS}`
-              : `mx-auto ${CHAT_MAX_WIDTH_CLASS}`
-          }`}
+          className={`mx-auto flex w-full flex-col gap-8 transition-[max-width] duration-300 ease-out sm:gap-10 ${CHAT_MAX_WIDTH_CLASS}`}
         >
           <div
-            className={`origin-top transition-all duration-500 ease-out ${
-              docked
-                ? "pointer-events-none translate-y-6 scale-[0.98] opacity-0"
-                : "translate-y-0 opacity-100"
+            className={`origin-top transition-opacity ease-out ${
+              fadeLandingChrome || docked
+                ? "pointer-events-none opacity-0"
+                : "opacity-100"
             } ${reduceMotion && docked ? "hidden" : ""}`}
+            style={{
+              transitionDuration:
+                fadeLandingChrome || docked
+                  ? `${LANDING_CHROME_FADE_MS}ms`
+                  : "300ms",
+            }}
           >
             <TypewriterHeading
               sessionKey={landingSessionKey}
-              hidden={docked}
+              hidden={fadeLandingChrome || docked}
             />
           </div>
 
@@ -370,16 +396,16 @@ export default function ChatPanel({
             }
           >
             <div
-              className={`pointer-events-auto w-full ${docked ? `mx-auto ${CHAT_PAGE_MAX_WIDTH_CLASS} px-4 sm:px-6` : ""}`}
+              className={`pointer-events-auto w-full transition-[max-width,padding,margin] duration-300 ease-out ${
+                docked ? `mx-auto ${CHAT_PAGE_MAX_WIDTH_CLASS} px-4 sm:px-6` : ""
+              }`}
             >
               <div
-                className={
+                className={`w-full ${
                   docked
-                    ? splitView
-                      ? `mr-auto w-full ${CHAT_SPLIT_MAX_WIDTH_CLASS}`
-                      : `mx-auto w-full ${CHAT_MAX_WIDTH_CLASS}`
-                    : "w-full"
-                }
+                    ? `mx-auto ${CHAT_MAX_WIDTH_CLASS} transition-[max-width] duration-300 ease-out`
+                    : ""
+                }`}
               >
                 <ChatComposer
                   ref={barRef}
@@ -395,11 +421,17 @@ export default function ChatPanel({
           </div>
 
           <div
-            className={`transition-all duration-500 ease-out ${
-              docked
-                ? "pointer-events-none max-h-0 translate-y-8 overflow-hidden opacity-0"
-                : "max-h-[2000px] translate-y-0 opacity-100"
+            className={`overflow-hidden transition-[opacity,max-height] ease-out ${
+              fadeLandingChrome || docked
+                ? "pointer-events-none max-h-0 opacity-0"
+                : "max-h-[2000px] opacity-100"
             }`}
+            style={{
+              transitionDuration:
+                fadeLandingChrome && !docked
+                  ? `${LANDING_CHROME_FADE_MS}ms`
+                  : "300ms",
+            }}
           >
             <SuggestionRows
               suggestions={LANDING_SUGGESTIONS}

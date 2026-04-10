@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
+    "@napi-rs/canvas": "^0.1.97",
     "lucide-react": "^0.468.0",
     "minisearch": "^7.1.1",
     "next": "^15.1.0",

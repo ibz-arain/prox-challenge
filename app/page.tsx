@@ -5,6 +5,8 @@ import ChatPanel from "@/components/chat/ChatPanel";
 import AppNav from "@/components/AppNav";
 import { CHAT_PAGE_MAX_WIDTH_CLASS } from "@/lib/chatLayout";
 import SourceViewerPanel from "@/components/sources/SourceViewerPanel";
+import { buildPageImageFromCitation } from "@/lib/evidence";
+import { CHAT_SESSION_STORAGE_KEY } from "@/lib/chat-session-key";
 import type {
   ChatMessage,
   Citation,
@@ -13,8 +15,6 @@ import type {
   SelectedSource,
   StreamEvent,
 } from "@/lib/types";
-
-const STORAGE_KEY = "omnipro-chat-session-v1";
 
 function makeId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -38,7 +38,9 @@ function buildSelectedSourceSnapshot(
         sourceId: candidateId,
         messageId,
         citation,
-        pageImage,
+        pageImage: buildPageImageFromCitation(citation, pageImage, {
+          highlightText: citation.excerpt,
+        }),
       };
     }
   }
@@ -66,7 +68,7 @@ export default function Home() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
-      const raw = window.localStorage.getItem(STORAGE_KEY);
+      const raw = window.localStorage.getItem(CHAT_SESSION_STORAGE_KEY);
       if (!raw) {
         setIsHydrated(true);
         return;
@@ -88,7 +90,7 @@ export default function Home() {
   useEffect(() => {
     if (!isHydrated || typeof window === "undefined") return;
     window.localStorage.setItem(
-      STORAGE_KEY,
+      CHAT_SESSION_STORAGE_KEY,
       JSON.stringify({
         messages,
         selectedSourceId,
@@ -122,7 +124,7 @@ export default function Home() {
       clearTrailTimeoutRef.current = null;
     }
     if (typeof window !== "undefined") {
-      window.localStorage.removeItem(STORAGE_KEY);
+      window.localStorage.removeItem(CHAT_SESSION_STORAGE_KEY);
     }
   }, []);
 
@@ -390,15 +392,15 @@ export default function Home() {
     [messages]
   );
 
+  const evidenceOpen = !!selectedSource;
+
   return (
-    <div className="flex min-h-dvh flex-col bg-(--color-bg)">
-      <AppNav onHome={resetApp} />
-      <div className="flex min-h-0 flex-1 flex-col px-4 pb-6 pt-20 sm:px-6 sm:pb-8">
-        <div
-          className={`mx-auto flex min-h-0 w-full min-w-0 flex-1 items-stretch gap-6 bg-(--color-bg) ${CHAT_PAGE_MAX_WIDTH_CLASS}`}
-        >
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-(--color-bg)">
+      <AppNav onHome={resetApp} evidenceOpen={evidenceOpen} />
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden md:flex-row">
+        <div className="order-1 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-(--color-bg) px-4 pt-20 pb-6 sm:px-6 md:order-1 md:px-4 md:pb-6 lg:px-6">
           <div
-            className={`flex min-h-0 min-w-0 flex-1 flex-col ${selectedSource ? "max-w-176" : "max-w-none"}`}
+            className={`mx-auto flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden ${CHAT_PAGE_MAX_WIDTH_CLASS}`}
           >
             <ChatPanel
               landingSessionKey={landingSessionKey}
@@ -411,21 +413,52 @@ export default function Home() {
               onHighlightSource={setHighlightedSourceId}
               selectedSourceId={selectedSourceId}
               onSelectSource={handleSelectSource}
-              splitView={Boolean(selectedSource)}
               onSend={sendMessage}
               onCancel={cancelStream}
             />
           </div>
-          {selectedSource && (
+        </div>
+
+        {/* Mobile scrim — sits behind the evidence sheet but above messages */}
+        {evidenceOpen && (
+          <div
+            className="fixed inset-0 z-8 bg-black/50 md:hidden"
+            aria-hidden="true"
+            onClick={() => {
+              setSelectedSourceId(null);
+              setHighlightedSourceId(null);
+            }}
+          />
+        )}
+
+        {/*
+          Evidence panel:
+          • Mobile (<md): position:fixed overlay at viewport bottom — never touches the
+            chat column so the input is never displaced.
+          • Desktop (md+): position:static flex-row side panel that narrows the chat column.
+        */}
+        <aside
+          aria-hidden={!evidenceOpen}
+          aria-label="Evidence sheet"
+          className={`order-2 flex min-h-0 flex-col overflow-hidden bg-neutral-950 shadow-[inset_1px_0_0_rgba(255,255,255,0.06)] transition-[width,max-height] duration-300 ease-[cubic-bezier(0.25,0.82,0.2,1)] motion-reduce:transition-none
+            fixed inset-x-0 bottom-0
+            md:static md:h-full md:max-h-none md:min-h-0 md:shrink-0 md:self-stretch
+            ${
+              evidenceOpen
+                ? "z-9 max-h-[min(42vh,22rem)] border-t border-white/10 md:z-auto md:w-lg md:border-l md:border-t-0 md:border-white/10 md:pb-0 md:pr-0"
+                : "pointer-events-none max-h-0 md:pointer-events-auto md:z-auto md:max-h-none md:w-0"
+            }`}
+        >
+          {evidenceOpen ? (
             <SourceViewerPanel
-              source={selectedSource}
+              source={selectedSource!}
               onClose={() => {
                 setSelectedSourceId(null);
                 setHighlightedSourceId(null);
               }}
             />
-          )}
-        </div>
+          ) : null}
+        </aside>
       </div>
     </div>
   );
