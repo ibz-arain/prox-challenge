@@ -6,7 +6,6 @@ import AppNav from "@/components/AppNav";
 import { CHAT_PAGE_MAX_WIDTH_CLASS } from "@/lib/chatLayout";
 import SourceViewerPanel from "@/components/sources/SourceViewerPanel";
 import { buildPageImageFromCitation } from "@/lib/evidence";
-import { sanitizeExcerptForDisplay } from "@/lib/citationExcerpt";
 import { CHAT_SESSION_STORAGE_KEY } from "@/lib/chat-session-key";
 import { stripTrailingIncompleteArtifact } from "@/lib/artifactMarkup";
 import type {
@@ -42,10 +41,7 @@ function buildSelectedSourceSnapshot(
         sourceId: candidateId,
         messageId,
         citation,
-        pageImage: buildPageImageFromCitation(citation, pageImage, {
-          highlightText:
-            sanitizeExcerptForDisplay(citation.excerpt, 480) || citation.excerpt,
-        }),
+        pageImage: buildPageImageFromCitation(citation, pageImage),
       };
     }
   }

@@ -65,17 +65,8 @@ export default function SourceViewerPanel({
   const imageSrc = useMemo(() => {
     if (source.pageImage?.imageUrl) return source.pageImage.imageUrl;
     if (source.pageImage?.url) return source.pageImage.url;
-    const highlight =
-      sanitizeExcerptForDisplay(source.citation.excerpt || "", 480) ||
-      source.citation.excerpt ||
-      "";
-    return buildPageImageUrl(
-      source.citation.source,
-      source.citation.pageNumber,
-      highlight || undefined
-    );
+    return buildPageImageUrl(source.citation.source, source.citation.pageNumber);
   }, [
-    source.citation.excerpt,
     source.citation.pageNumber,
     source.citation.source,
     source.pageImage?.imageUrl,
@@ -152,8 +143,7 @@ export default function SourceViewerPanel({
                 {renderHighlightedExcerpt(supportingExcerpt)}
               </p>
               <p className="mt-3 text-xs leading-5 text-neutral-500">
-                The preview requests this exact excerpt and highlights the matching text on the
-                rendered page when the PDF text layer can be resolved.
+                The image is the full manual page; the excerpt above highlights key phrases in text.
               </p>
             </div>
 

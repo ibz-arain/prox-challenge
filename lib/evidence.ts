@@ -1,35 +1,19 @@
 import type { Citation, PageImage } from "./types";
 
-export function buildPageImageUrl(
-  source: string,
-  pageNumber: number,
-  highlightText?: string
-): string {
-  const params = new URLSearchParams();
-  const normalizedHighlight = highlightText?.trim();
-
-  if (normalizedHighlight) {
-    params.set("highlight", normalizedHighlight);
-  }
-
-  const query = params.toString();
-  return `/api/pages/${encodeURIComponent(source)}/${pageNumber}${query ? `?${query}` : ""}`;
+/**
+ * Use for <img src> only. Long ?highlight= query strings (URL-encoded excerpts)
+ * exceed Vercel/CDN limits and return 404. Excerpt highlighting stays in UI text.
+ */
+export function buildPageImageUrl(source: string, pageNumber: number): string {
+  return `/api/pages/${encodeURIComponent(source)}/${pageNumber}`;
 }
 
 export function buildPageImageFromCitation(
   citation: Citation,
-  pageImage?: Partial<PageImage>,
-  options?: { highlightText?: string }
+  pageImage?: Partial<PageImage>
 ): PageImage {
   const excerpt = pageImage?.excerpt || citation.excerpt;
-  const url =
-    options?.highlightText
-      ? buildPageImageUrl(
-          citation.source,
-          citation.pageNumber,
-          options.highlightText
-        )
-      : pageImage?.url || buildPageImageUrl(citation.source, citation.pageNumber);
+  const url = pageImage?.url || buildPageImageUrl(citation.source, citation.pageNumber);
 
   return {
     pageNumber: citation.pageNumber,
@@ -37,6 +21,6 @@ export function buildPageImageFromCitation(
     sourceLabel: citation.sourceLabel,
     excerpt,
     url,
-    imageUrl: options?.highlightText ? url : pageImage?.imageUrl || url,
+    imageUrl: pageImage?.imageUrl || url,
   };
 }

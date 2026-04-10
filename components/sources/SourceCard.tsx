@@ -23,10 +23,7 @@ export default function SourceCard({
   anchorId,
   active = false,
 }: SourceCardProps) {
-  const preview = buildPageImageFromCitation(citation, pageImage, {
-    highlightText:
-      sanitizeExcerptForDisplay(citation.excerpt, 480) || citation.excerpt,
-  });
+  const preview = buildPageImageFromCitation(citation, pageImage);
   const imageSrc = preview.imageUrl ?? preview.url;
   const caption =
     sanitizeExcerptForDisplay(citation.excerpt, 110) || citation.excerpt;
