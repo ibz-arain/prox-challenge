@@ -2,15 +2,14 @@ import type Anthropic from "@anthropic-ai/sdk";
 import {
   getLlmClientAndModel,
   getLlmMaxOutputTokens,
-  getOpenRouterClientOrNull,
-  shouldFallbackToOpenRouterAfterAnthropicError,
 } from "./client";
 import { SYSTEM_PROMPT } from "./system-prompt";
 import { toolDefinitions, executeToolCall } from "./tools";
 import type { Citation, Artifact, PageImage, ChatMessage } from "../types";
 import { SOURCE_LABELS } from "../types";
 
-const MAX_TOOL_ROUNDS = 6;
+const MAX_TOOL_ROUNDS = 3;
+const TOOL_TIMEOUT_MS = 12000;
 
 interface AgentResult {
   text: string;
@@ -53,14 +52,32 @@ function parseArtifacts(text: string): {
   return { cleanText, artifacts };
 }
 
+async function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  onTimeout: () => T
+): Promise<T> {
+  return await new Promise<T>((resolve, reject) => {
+    const timeoutId = setTimeout(() => resolve(onTimeout()), timeoutMs);
+    promise
+      .then((value) => {
+        clearTimeout(timeoutId);
+        resolve(value);
+      })
+      .catch((error) => {
+        clearTimeout(timeoutId);
+        reject(error);
+      });
+  });
+}
+
 export async function runAgent(
   messages: ChatMessage[],
   options: RunAgentOptions = {}
 ): Promise<AgentResult> {
   const { onStatus, onTextDelta, onCitation, onArtifact, onPageImage } = options;
-  let { client, model, provider } = getLlmClientAndModel();
+  const { client, model } = getLlmClientAndModel();
   const maxTokens = getLlmMaxOutputTokens();
-  let usedOpenRouterBillingFallback = false;
 
   const anthropicMessages: Anthropic.Messages.MessageParam[] = messages.map(
     (m) => {
@@ -137,30 +154,8 @@ export async function runAgent(
     return await messagesApi.create(params);
   };
 
-  const createAssistantResponse = async (requestOptions: CreateResponseOptions) => {
-    try {
-      return await streamAssistantResponse(client, model, requestOptions);
-    } catch (err) {
-      if (
-        provider === "anthropic" &&
-        !usedOpenRouterBillingFallback &&
-        shouldFallbackToOpenRouterAfterAnthropicError(err)
-      ) {
-        const or = getOpenRouterClientOrNull();
-        if (or) {
-          usedOpenRouterBillingFallback = true;
-          client = or.client;
-          model = or.model;
-          provider = "openrouter";
-          console.warn(
-            "[agent] Anthropic request failed (credits/billing); retrying via OpenRouter."
-          );
-          return await streamAssistantResponse(client, model, requestOptions);
-        }
-      }
-      throw err;
-    }
-  };
+  const createAssistantResponse = async (requestOptions: CreateResponseOptions) =>
+    await streamAssistantResponse(client, model, requestOptions);
 
   const getToolStatusMessage = (
     toolName: string,
@@ -169,7 +164,10 @@ export async function runAgent(
     switch (toolName) {
       case "search_manual": {
         const query = String(toolInput.query ?? "query");
-        return `Searching manual for '${query}'...`;
+        return `Searching for "${query}"...`;
+      }
+      case "search_manual_multi": {
+        return "Cross-checking a few manual searches...";
       }
       case "get_page": {
         const pageNumber = Number(toolInput.page_number ?? 0);
@@ -177,17 +175,27 @@ export async function runAgent(
         const sourceLabel = SOURCE_LABELS[source] ?? source;
         return `Reading ${sourceLabel} page ${pageNumber}...`;
       }
+      case "get_page_bundle": {
+        const pages = Array.isArray(toolInput.pages)
+          ? toolInput.pages.join(", ")
+          : "requested pages";
+        return `Cross-referencing pages ${pages}...`;
+      }
       case "get_page_image": {
         const pageNumber = Number(toolInput.page_number ?? 0);
-        return `Pulling diagram from page ${pageNumber}...`;
+        return `Pulling the visual from page ${pageNumber}...`;
+      }
+      case "get_visual_context": {
+        const topic = String(toolInput.topic ?? "requested topic");
+        return `Finding the best visual for ${topic}...`;
       }
       case "get_diagram": {
         const diagramName = String(toolInput.diagram_id ?? "requested");
-        return `Loading ${diagramName} diagram...`;
+        return `Loading the ${diagramName} diagram...`;
       }
       case "lookup_specs": {
         const query = String(toolInput.spec_type ?? "requested");
-        return `Looking up specs for ${query}...`;
+        return `Looking up ${query} specs...`;
       }
       default:
         return null;
@@ -198,13 +206,15 @@ export async function runAgent(
     toolName: string,
     result: Awaited<ReturnType<typeof executeToolCall>>
   ): string | null => {
-    if (toolName !== "search_manual") return null;
+    if (toolName !== "search_manual" && toolName !== "search_manual_multi") {
+      return null;
+    }
     const citations = result.citations ?? [];
     if (!citations.length) {
-      return "Found 0 relevant pages — reading page 1...";
+      return "No strong matches yet.";
     }
     const topPage = citations[0]?.pageNumber ?? 1;
-    return `Found ${citations.length} relevant pages — reading page ${topPage}...`;
+    return `Found ${citations.length} useful page${citations.length === 1 ? "" : "s"}; top hit is page ${topPage}.`;
   };
 
   const emitCitation = async (citation: Citation) => {
@@ -212,6 +222,9 @@ export async function runAgent(
     if (seenCitationKeys.has(key)) return;
     seenCitationKeys.add(key);
     allCitations.push(citation);
+    if (onCitation) {
+      await onCitation(citation);
+    }
   };
 
   const emitPageImage = async (pageImage: PageImage) => {
@@ -219,9 +232,19 @@ export async function runAgent(
     if (seenPageImageKeys.has(key)) return;
     seenPageImageKeys.add(key);
     allPageImages.push(pageImage);
+    if (onPageImage) {
+      await onPageImage(pageImage);
+    }
   };
 
+  if (onStatus) {
+    await onStatus("Checking the manual...");
+  }
+
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+    if (onStatus && round > 0) {
+      await onStatus(`Reviewing the evidence pass ${round + 1}/${MAX_TOOL_ROUNDS}...`);
+    }
     const response = await createAssistantResponse({
       includeTools: true,
       streamText: false,
@@ -244,39 +267,49 @@ export async function runAgent(
       content: response.content,
     });
 
-    const toolResults: Anthropic.Messages.ToolResultBlockParam[] = [];
-    for (const toolUse of toolUseBlocks) {
-      const input = toolUse.input as Record<string, unknown>;
-      const statusMessage = getToolStatusMessage(toolUse.name, input);
-      if (statusMessage && onStatus) {
-        await onStatus(statusMessage);
-      }
-      const result = await executeToolCall(
-        toolUse.name,
-        input
-      );
-      const completeStatus = getToolCompleteStatusMessage(toolUse.name, result);
-      if (completeStatus && onStatus) {
-        await onStatus(completeStatus);
-      }
-
-      if (result.citations) {
-        for (const citation of result.citations) {
-          await emitCitation(citation);
+    const toolResults = await Promise.all(
+      toolUseBlocks.map(async (toolUse) => {
+        const input = toolUse.input as Record<string, unknown>;
+        const statusMessage = getToolStatusMessage(toolUse.name, input);
+        if (statusMessage && onStatus) {
+          await onStatus(statusMessage);
         }
-      }
-      if (result.pageImages) {
-        for (const pageImage of result.pageImages) {
-          await emitPageImage(pageImage);
+        const result = await withTimeout(
+          executeToolCall(toolUse.name, input),
+          TOOL_TIMEOUT_MS,
+          () => ({
+            content:
+              "This lookup timed out. Continue with the other evidence and say the result may be incomplete.",
+            citations: [],
+            pageImages: [],
+          })
+        );
+        if (onStatus) {
+          await onStatus(`Finished ${toolUse.name.replaceAll("_", " ")}.`);
         }
-      }
+        const completeStatus = getToolCompleteStatusMessage(toolUse.name, result);
+        if (completeStatus && onStatus) {
+          await onStatus(completeStatus);
+        }
 
-      toolResults.push({
-        type: "tool_result",
-        tool_use_id: toolUse.id,
-        content: result.content,
-      });
-    }
+        if (result.citations) {
+          for (const citation of result.citations) {
+            await emitCitation(citation);
+          }
+        }
+        if (result.pageImages) {
+          for (const pageImage of result.pageImages) {
+            await emitPageImage(pageImage);
+          }
+        }
+
+        return {
+          type: "tool_result" as const,
+          tool_use_id: toolUse.id,
+          content: result.content,
+        };
+      })
+    );
 
     anthropicMessages.push({
       role: "user",
@@ -285,7 +318,7 @@ export async function runAgent(
   }
 
   if (onStatus) {
-    await onStatus("Synthesizing answer...");
+    await onStatus("Writing the answer...");
   }
   const finalResponse = await createAssistantResponse({
     includeTools: false,
@@ -300,19 +333,9 @@ export async function runAgent(
   fullText += finalTextBlocks.join("");
 
   const { cleanText, artifacts } = parseArtifacts(fullText);
-  if (onCitation) {
-    for (const citation of allCitations) {
-      await onCitation(citation);
-    }
-  }
   if (onArtifact) {
     for (const artifact of artifacts) {
       await onArtifact(artifact);
-    }
-  }
-  if (onPageImage) {
-    for (const pageImage of allPageImages) {
-      await onPageImage(pageImage);
     }
   }
 

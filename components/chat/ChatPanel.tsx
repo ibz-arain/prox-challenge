@@ -7,10 +7,14 @@ import {
   useRef,
   useLayoutEffect,
 } from "react";
-import { CHAT_MAX_WIDTH_CLASS, CHAT_PAGE_MAX_WIDTH_CLASS } from "@/lib/chatLayout";
+import {
+  CHAT_MAX_WIDTH_CLASS,
+  CHAT_PAGE_MAX_WIDTH_CLASS,
+  CHAT_SPLIT_MAX_WIDTH_CLASS,
+} from "@/lib/chatLayout";
 import MessageList from "./MessageList";
 import ChatComposer, { ComposerDock } from "./ChatComposer";
-import type { ChatMessage } from "@/lib/types";
+import type { ChatMessage, SelectedSource } from "@/lib/types";
 
 const TYPEWRITER_PROMPT = "What do you need help with?";
 
@@ -98,7 +102,7 @@ function SuggestionRows({
       <p className="mb-3 px-4 text-[11px] font-medium uppercase tracking-[0.16em] text-neutral-600">
         Try asking
       </p>
-      <div className="border-y border-white/[0.08]">
+      <div className="border-y border-white/8">
         {suggestions.map((p, i) => (
           <button
             key={p.id}
@@ -106,7 +110,7 @@ function SuggestionRows({
             disabled={disabled}
             onClick={() => onPick(p.query)}
             className={`w-full px-4 py-3.5 text-left text-sm leading-relaxed text-neutral-400 transition-colors duration-150 hover:text-neutral-100 focus:outline-none focus-visible:text-neutral-50 disabled:opacity-50 ${
-              i > 0 ? "border-t border-white/[0.06]" : ""
+              i > 0 ? "border-t border-white/6" : ""
             }`}
           >
             {p.query}
@@ -126,6 +130,9 @@ interface ChatPanelProps {
   streamComplete: boolean;
   highlightedSourceId?: string | null;
   onHighlightSource: (sourceId: string) => void;
+  selectedSourceId?: string | null;
+  onSelectSource: (source: SelectedSource) => void;
+  splitView?: boolean;
   onSend: (message: string, image?: string) => void;
   onCancel?: () => void;
 }
@@ -139,6 +146,9 @@ export default function ChatPanel({
   streamComplete,
   highlightedSourceId,
   onHighlightSource,
+  selectedSourceId,
+  onSelectSource,
+  splitView = false,
   onSend,
   onCancel,
 }: ChatPanelProps) {
@@ -301,7 +311,7 @@ export default function ChatPanel({
 
   if (messages.length > 0) {
     return (
-      <div className="relative flex h-full min-h-0 flex-col bg-[var(--color-bg)]">
+      <div className="relative flex w-full flex-col bg-(--color-bg)">
         <MessageList
           messages={messages}
           isLoading={isLoading}
@@ -310,9 +320,11 @@ export default function ChatPanel({
           streamComplete={streamComplete}
           highlightedSourceId={highlightedSourceId}
           onHighlightSource={onHighlightSource}
+          selectedSourceId={selectedSourceId}
+          onSelectSource={onSelectSource}
           enterReady={threadEntered}
         />
-        <ComposerDock>
+        <ComposerDock split={splitView}>
           <ChatComposer
             mode="thread"
             onSend={onSend}
@@ -328,10 +340,14 @@ export default function ChatPanel({
   const landingBusy = isLoading || dockLocked;
 
   return (
-    <div className="relative flex min-h-0 flex-1 flex-col bg-[var(--color-bg)]">
-      <div className="flex min-h-0 flex-1 flex-col justify-center overflow-y-auto px-4 py-10 sm:py-14">
+    <div className="relative flex h-full min-h-0 flex-1 flex-col justify-center bg-(--color-bg)">
+      <div className="flex flex-col justify-center px-4 py-8 sm:py-10">
         <div
-          className={`mx-auto flex w-full flex-col gap-8 sm:gap-10 ${CHAT_MAX_WIDTH_CLASS}`}
+          className={`flex w-full flex-col gap-8 sm:gap-10 ${
+            splitView
+              ? `mr-auto ${CHAT_SPLIT_MAX_WIDTH_CLASS}`
+              : `mx-auto ${CHAT_MAX_WIDTH_CLASS}`
+          }`}
         >
           <div
             className={`origin-top transition-all duration-500 ease-out ${
@@ -349,7 +365,7 @@ export default function ChatPanel({
           <div
             className={
               docked
-                ? "pointer-events-none fixed inset-x-0 bottom-0 z-40 flex justify-center bg-linear-to-t from-[var(--color-bg)] via-[var(--color-bg)]/95 to-transparent pb-5 pt-24"
+                ? "pointer-events-none fixed inset-x-0 bottom-0 z-40 flex justify-center bg-linear-to-t from-(--color-bg) via-(--color-bg)/95 to-transparent pb-5 pt-24"
                 : "relative z-30 w-full"
             }
           >
@@ -358,7 +374,11 @@ export default function ChatPanel({
             >
               <div
                 className={
-                  docked ? `mx-auto w-full ${CHAT_MAX_WIDTH_CLASS}` : "w-full"
+                  docked
+                    ? splitView
+                      ? `mr-auto w-full ${CHAT_SPLIT_MAX_WIDTH_CLASS}`
+                      : `mx-auto w-full ${CHAT_MAX_WIDTH_CLASS}`
+                    : "w-full"
                 }
               >
                 <ChatComposer

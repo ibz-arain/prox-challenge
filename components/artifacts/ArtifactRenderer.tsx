@@ -6,6 +6,7 @@ import DiagramArtifact from "./DiagramArtifact";
 import FlowchartArtifact from "./FlowchartArtifact";
 import CalculatorWidget from "./CalculatorWidget";
 import SettingsCard from "./SettingsCard";
+import HtmlArtifact from "./HtmlArtifact";
 
 interface ArtifactRendererProps {
   artifact: Artifact;
@@ -29,6 +30,8 @@ export default function ArtifactRenderer({ artifact }: ArtifactRendererProps) {
       );
     case "settings-card":
       return <SettingsCard title={artifact.title} content={artifact.content} />;
+    case "artifact-html":
+      return <HtmlArtifact title={artifact.title} content={artifact.content} />;
     default:
       return (
         <div className="artifact-card my-4">

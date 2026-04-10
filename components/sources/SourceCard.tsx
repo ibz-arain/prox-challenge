@@ -9,6 +9,7 @@ interface SourceCardProps {
   highlighted?: boolean;
   delayMs?: number;
   anchorId?: string;
+  active?: boolean;
 }
 
 export default function SourceCard({
@@ -18,6 +19,7 @@ export default function SourceCard({
   highlighted = false,
   delayMs = 0,
   anchorId,
+  active = false,
 }: SourceCardProps) {
   const imageSrc = pageImage?.imageUrl ?? pageImage?.url;
 
@@ -26,16 +28,16 @@ export default function SourceCard({
       id={anchorId}
       type="button"
       onClick={onOpen}
-      className={`inline-flex h-[120px] w-[180px] shrink-0 flex-col overflow-hidden rounded-xl border bg-neutral-900/60 text-left shadow-sm transition-all duration-300 ease-out ${
-        highlighted
-          ? "border-brand/60 ring-1 ring-brand/40"
+      className={`inline-flex h-[112px] w-[168px] shrink-0 flex-col overflow-hidden rounded-xl border bg-neutral-900/60 text-left shadow-sm transition-all duration-300 ease-out ${
+        highlighted || active
+          ? "border-brand/70 ring-1 ring-brand/50 shadow-[0_0_0_1px_rgba(239,99,0,0.14),0_10px_24px_rgba(0,0,0,0.22)]"
           : "border-neutral-800 hover:border-brand/35"
       } source-card-enter`}
       style={{ animationDelay: `${delayMs}ms` }}
     >
       {imageSrc ? (
         <>
-          <div className="h-[70%] border-b border-neutral-800">
+          <div className="h-[66%] border-b border-neutral-800">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={imageSrc}
@@ -43,7 +45,7 @@ export default function SourceCard({
               className="h-full w-full object-cover"
             />
           </div>
-          <div className="h-[30%] px-2 py-1.5">
+          <div className="h-[34%] px-2 py-1.5">
             <p className="line-clamp-2 text-[11px] leading-snug text-neutral-300">
               {citation.excerpt}
             </p>

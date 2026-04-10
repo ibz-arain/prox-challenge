@@ -170,7 +170,7 @@ export default function StatusTrail({
     );
   }
 
-  const visibleStatuses = hasTextStarted ? statuses.slice(-1) : statuses;
+  const visibleStatuses = statuses;
   const isLatest = (index: number) => index === visibleStatuses.length - 1;
   const streamActive = statuses.length > 0;
 
@@ -183,9 +183,7 @@ export default function StatusTrail({
       <ul className="space-y-2">
         {visibleStatuses.map((line, index) => {
           const latest = isLatest(index);
-          const toolsInProgress = Boolean(
-            latest && streamActive && !hasTextStarted
-          );
+          const toolsInProgress = Boolean(latest && streamActive && !isDone);
           return (
             <StatusLine
               key={`${index}-${line.slice(0, 24)}`}

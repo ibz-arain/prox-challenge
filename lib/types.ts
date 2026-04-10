@@ -29,7 +29,13 @@ export interface Citation {
 }
 
 export interface Artifact {
-  type: "table" | "svg-diagram" | "flowchart" | "calculator" | "settings-card";
+  type:
+    | "table"
+    | "svg-diagram"
+    | "flowchart"
+    | "calculator"
+    | "settings-card"
+    | "artifact-html";
   title: string;
   content: string;
 }
@@ -41,6 +47,13 @@ export interface PageImage {
   url: string;
   imageUrl?: string;
   excerpt?: string;
+}
+
+export interface SelectedSource {
+  sourceId: string;
+  messageId: string;
+  citation: Citation;
+  pageImage?: PageImage;
 }
 
 export interface ChatMessage {
@@ -56,13 +69,16 @@ export interface ChatMessage {
 export interface StreamEvent {
   type:
     | "text_delta"
+    | "text_replace"
     | "status"
     | "citation"
     | "artifact"
     | "page_image"
+    | "heartbeat"
     | "done"
     | "error";
   delta?: string;
+  text?: string;
   message?: string;
   data?: Citation | Artifact | PageImage;
   error?: string;

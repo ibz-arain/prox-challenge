@@ -26,25 +26,20 @@ That's it. The search index auto-builds on your first query. Alternatively, pre-
 npm run ingest                 # Extracts text from PDFs, builds search index
 ```
 
-## LLM configuration (Anthropic first, OpenRouter optional)
+## LLM configuration
 
-The app uses `@anthropic-ai/sdk` against either **OpenRouter** (`https://openrouter.ai/api`) or **Anthropic** directly. Same tools and response handling in both cases.
+The app uses `@anthropic-ai/sdk` directly against Anthropic.
 
 **Quick setup:** put your Anthropic key in `ANTHROPIC_API_KEY` (get one from [Anthropic Console](https://console.anthropic.com/)).
-
-**Auto routing:** if `ANTHROPIC_API_KEY` is set, the app always uses Anthropic directly. If Anthropic key is missing, it falls back to `OPENROUTER_API_KEY`.
 
 | Variable | Purpose |
 |----------|---------|
 | `ANTHROPIC_API_KEY` | Primary key used for chat + vision ingestion |
-| `OPENROUTER_API_KEY` | Optional fallback/provider alternative |
-| `OPENROUTER_MODEL` | Optional OpenRouter model id (default: `arcee-ai/trinity-large-preview:free`) |
-| `LLM_PROVIDER` | Optional override (`openrouter`) when Anthropic key is absent |
-| `LLM_MAX_TOKENS` | Optional; default **2048** per completion (OpenRouter free/low credits often fail at 4096) |
+| `LLM_MAX_TOKENS` | Optional; default **4096** per completion |
 
-**Models:** When `ANTHROPIC_API_KEY` is set, the app uses **Claude** on Anthropic (`claude-sonnet-4-20250514`). When only OpenRouter is used (or after billing fallback), the default is **Trinity Large Preview (free)** (`arcee-ai/trinity-large-preview:free`), not Claude.
+**Model:** The app uses **Claude Sonnet 4** (`claude-sonnet-4-20250514`).
 
-**Structured outputs:** Tool results and citations come from this app. `<artifact>` tags depend on the model following the prompt; **Claude (direct Anthropic)** is most reliable for tools and artifacts. Free OpenRouter models may be weaker—use Anthropic for demos that depend on tool use.
+**Structured outputs:** Tool results and citations come from this app. `<artifact>` tags depend on the model following the prompt, and Claude is the expected runtime model for artifact-heavy answers.
 
 ## Why This Product Is Hard
 
@@ -104,7 +99,7 @@ Key challenges:
 | Framework | Next.js 15 (App Router) | Full-stack React with API routes, fast DX |
 | Language | TypeScript (strict) | Type safety across agent/API/frontend |
 | Styling | Tailwind CSS 4 | Rapid, consistent dark-mode UI |
-| AI | Anthropic SDK (Messages API) | Claude on Anthropic; Trinity Large Preview (free) on OpenRouter by default |
+| AI | Anthropic SDK (Messages API) | Claude-powered tool use and multimodal responses |
 | PDF Processing | pdfjs-dist (Mozilla pdf.js) | Pure-JS PDF text extraction, no system deps |
 | Search | MiniSearch | Zero-dependency in-memory full-text search |
 | Rendering | react-markdown + custom components | Rich artifact rendering (SVG, tables, flowcharts) |
@@ -235,7 +230,7 @@ Try these to explore the agent's capabilities:
 
 ### Current Limitations
 - **No vector embeddings** — uses keyword-based search (TF-IDF/BM25), not semantic embeddings. Good enough for a 50-page corpus but would benefit from embeddings for nuanced queries.
-- **Vision ingestion depends on API access** — if no Anthropic/OpenRouter key is set, image-only pages cannot be vision-extracted.
+- **Vision ingestion depends on API access** — if no Anthropic key is set, image-only pages cannot be vision-extracted.
 - **Dynamic full-page rendering can be unavailable** — static critical page images are still served, and evidence falls back to text excerpts when an image is missing.
 
 ### Future Improvements

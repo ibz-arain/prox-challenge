@@ -5,6 +5,76 @@ import type { Citation, PageImage } from "../types";
 import { SOURCE_LABELS } from "../types";
 import { DIAGRAM_CATALOG, DIAGRAM_IDS } from "../diagrams/catalog";
 
+const WELDING_QUERY_REWRITES: Array<[RegExp, string]> = [
+  [/\bmig\b/gi, "MIG GMAW"],
+  [/\bflux[- ]?cored\b/gi, "flux cored FCAW"],
+  [/\btig\b/gi, "TIG GTAW"],
+  [/\bstick\b/gi, "stick SMAW"],
+  [/\bground clamp\b/gi, "work clamp ground clamp return lead"],
+  [/\bpolarity\b/gi, "polarity DCEP DCEN lead connection"],
+  [/\bporosity\b/gi, "porosity gas contamination shielding gas"],
+];
+
+function expandQuery(query: string): string {
+  let expanded = query;
+  for (const [pattern, replacement] of WELDING_QUERY_REWRITES) {
+    expanded = expanded.replace(pattern, replacement);
+  }
+  return expanded;
+}
+
+function toCitation(
+  source: string,
+  sourceLabel: string,
+  pageNumber: number,
+  excerpt: string
+): Citation {
+  return {
+    pageNumber,
+    source,
+    sourceLabel: SOURCE_LABELS[source] || sourceLabel,
+    excerpt,
+  };
+}
+
+async function searchManyQueries(
+  queries: string[],
+  options?: {
+    sectionFilter?: string;
+    sourceFilter?: string;
+    topKPerQuery?: number;
+    topK?: number;
+  }
+) {
+  const results = await Promise.all(
+    queries
+      .map((query) => query.trim())
+      .filter(Boolean)
+      .map((query) =>
+        searchManual(expandQuery(query), {
+          sectionFilter: options?.sectionFilter,
+          sourceFilter: options?.sourceFilter,
+          topK: options?.topKPerQuery ?? 3,
+        })
+      )
+  );
+
+  const deduped = new Map<string, (typeof results)[number][number]>();
+  for (const group of results) {
+    for (const result of group) {
+      const key = `${result.source}:${result.pageNumber}`;
+      const existing = deduped.get(key);
+      if (!existing || result.score > existing.score) {
+        deduped.set(key, result);
+      }
+    }
+  }
+
+  return Array.from(deduped.values())
+    .sort((a, b) => b.score - a.score)
+    .slice(0, options?.topK ?? 5);
+}
+
 export const toolDefinitions: Anthropic.Messages.Tool[] = [
   {
     name: "search_manual",
@@ -38,6 +108,37 @@ export const toolDefinitions: Anthropic.Messages.Tool[] = [
     },
   },
   {
+    name: "search_manual_multi",
+    description:
+      "Search the manual with several focused queries in parallel, then merge and deduplicate the best pages. Use for ambiguous troubleshooting or when you need to cross-check multiple terms quickly.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        queries: {
+          type: "array",
+          items: { type: "string" },
+          description: "2-4 focused search queries to run together",
+        },
+        section_filter: {
+          type: "string",
+          enum: [
+            "safety",
+            "setup",
+            "specs",
+            "troubleshooting",
+            "polarity",
+            "welding-process",
+            "maintenance",
+            "parts",
+            "general",
+          ],
+          description: "Optional: filter results to a specific manual section",
+        },
+      },
+      required: ["queries"],
+    },
+  },
+  {
     name: "get_page",
     description:
       "Get the full text content of a specific manual page. Use when you need complete context from a page referenced in search results.",
@@ -58,6 +159,27 @@ export const toolDefinitions: Anthropic.Messages.Tool[] = [
     },
   },
   {
+    name: "get_page_bundle",
+    description:
+      "Fetch the full text of multiple specific pages at once. Use when the answer depends on cross-referencing a few exact pages.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        pages: {
+          type: "array",
+          items: { type: "number" },
+          description: "A short list of page numbers to retrieve",
+        },
+        source: {
+          type: "string",
+          description:
+            "Source document slug: 'owner-manual', 'quick-start-guide', or 'selection-chart'",
+        },
+      },
+      required: ["pages"],
+    },
+  },
+  {
     name: "get_page_image",
     description:
       "Request that a manual page image be shown in the evidence panel. Use when the visual content of a page (diagram, chart, photo, schematic) is relevant to the answer.",
@@ -74,6 +196,26 @@ export const toolDefinitions: Anthropic.Messages.Tool[] = [
         },
       },
       required: ["page_number"],
+    },
+  },
+  {
+    name: "get_visual_context",
+    description:
+      "Find relevant visual/manual pages for a topic and attach page images for them. Use this when diagrams, photos, charts, or schematics are more helpful than prose.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        topic: {
+          type: "string",
+          description:
+            "The visual topic to look up, such as polarity, wire feed path, front panel, weld diagnosis, or settings chart",
+        },
+        source: {
+          type: "string",
+          description: "Optional source document slug",
+        },
+      },
+      required: ["topic"],
     },
   },
   {
@@ -142,7 +284,7 @@ export async function executeToolCall(
     case "search_manual": {
       const query = input.query as string;
       const sectionFilter = input.section_filter as string | undefined;
-      const results = await searchManual(query, { sectionFilter, topK: 5 });
+      const results = await searchManual(expandQuery(query), { sectionFilter, topK: 5 });
 
       if (results.length === 0) {
         return {
@@ -151,12 +293,9 @@ export async function executeToolCall(
         };
       }
 
-      const citations: Citation[] = results.map((r) => ({
-        pageNumber: r.pageNumber,
-        source: r.source,
-        sourceLabel: SOURCE_LABELS[r.source] || r.sourceLabel,
-        excerpt: r.excerpt,
-      }));
+      const citations: Citation[] = results.map((r) =>
+        toCitation(r.source, r.sourceLabel, r.pageNumber, r.excerpt)
+      );
 
       const content = results
         .map(
@@ -166,6 +305,36 @@ export async function executeToolCall(
         .join("\n\n");
 
       return { content, citations };
+    }
+
+    case "search_manual_multi": {
+      const queries = Array.isArray(input.queries)
+        ? input.queries.filter((item): item is string => typeof item === "string")
+        : [];
+      const sectionFilter = input.section_filter as string | undefined;
+      const results = await searchManyQueries(queries, {
+        sectionFilter,
+        topKPerQuery: 3,
+        topK: 6,
+      });
+
+      if (results.length === 0) {
+        return {
+          content: "No results found for those queries.",
+        };
+      }
+
+      return {
+        content: results
+          .map(
+            (r, index) =>
+              `Result ${index + 1} [${SOURCE_LABELS[r.source] || r.sourceLabel}, Page ${r.pageNumber}] (score: ${r.score.toFixed(1)}):\n${r.excerpt}`
+          )
+          .join("\n\n"),
+        citations: results.map((r) =>
+          toCitation(r.source, r.sourceLabel, r.pageNumber, r.excerpt)
+        ),
+      };
     }
 
     case "get_page": {
@@ -180,13 +349,44 @@ export async function executeToolCall(
       return {
         content: `[${SOURCE_LABELS[page.source] || page.sourceLabel}, Page ${page.pageNumber}]:\n${page.text}`,
         citations: [
-          {
-            pageNumber: page.pageNumber,
-            source: page.source,
-            sourceLabel: SOURCE_LABELS[page.source] || page.sourceLabel,
-            excerpt: page.text.slice(0, 200) + "...",
-          },
+          toCitation(
+            page.source,
+            page.sourceLabel,
+            page.pageNumber,
+            page.text.slice(0, 200) + "..."
+          ),
         ],
+      };
+    }
+
+    case "get_page_bundle": {
+      const pages = Array.isArray(input.pages)
+        ? input.pages.filter((page): page is number => typeof page === "number")
+        : [];
+      const source = input.source as string | undefined;
+      const bundledPages = (
+        await Promise.all(pages.map((pageNumber) => getPageContent(pageNumber, source)))
+      ).filter((page): page is NonNullable<typeof page> => page !== null);
+
+      if (bundledPages.length === 0) {
+        return { content: "None of those pages were found." };
+      }
+
+      return {
+        content: bundledPages
+          .map(
+            (page) =>
+              `[${SOURCE_LABELS[page.source] || page.sourceLabel}, Page ${page.pageNumber}]:\n${page.text}`
+          )
+          .join("\n\n"),
+        citations: bundledPages.map((page) =>
+          toCitation(
+            page.source,
+            page.sourceLabel,
+            page.pageNumber,
+            page.text.slice(0, 200) + "..."
+          )
+        ),
       };
     }
 
@@ -216,16 +416,63 @@ export async function executeToolCall(
       };
     }
 
+    case "get_visual_context": {
+      const topic = String(input.topic ?? "").trim();
+      const source = input.source as string | undefined;
+      const results = await searchManyQueries(
+        [
+          topic,
+          `${topic} diagram`,
+          `${topic} chart`,
+          `${topic} photo`,
+          `${topic} schematic`,
+        ],
+        {
+          sourceFilter: source,
+          topKPerQuery: 2,
+          topK: 4,
+        }
+      );
+
+      if (results.length === 0) {
+        return { content: `No visual references found for "${topic}".` };
+      }
+
+      const pageImages: PageImage[] = [];
+      for (const result of results) {
+        pageImages.push({
+          pageNumber: result.pageNumber,
+          source: result.source,
+          sourceLabel: SOURCE_LABELS[result.source] || result.sourceLabel,
+          url: `/api/pages/${result.source}/${result.pageNumber}`,
+          excerpt: result.excerpt,
+        });
+      }
+
+      return {
+        content: results
+          .map(
+            (result) =>
+              `Relevant visual [${SOURCE_LABELS[result.source] || result.sourceLabel}, Page ${result.pageNumber}]:\n${result.excerpt}`
+          )
+          .join("\n\n"),
+        citations: results.map((result) =>
+          toCitation(result.source, result.sourceLabel, result.pageNumber, result.excerpt)
+        ),
+        pageImages,
+      };
+    }
+
     case "lookup_specs": {
       const specType = input.spec_type as string;
       const query = SPEC_QUERIES[specType] || specType;
-      const results = await searchManual(query, {
+      const results = await searchManual(expandQuery(query), {
         sectionFilter: "specs",
         topK: 3,
       });
 
       if (results.length === 0) {
-        const broaderResults = await searchManual(query, { topK: 3 });
+        const broaderResults = await searchManual(expandQuery(query), { topK: 3 });
         if (broaderResults.length === 0) {
           return {
             content: `No specification data found for "${specType}". Try searching with different terms.`,
@@ -239,12 +486,9 @@ export async function executeToolCall(
           .join("\n\n");
         return {
           content,
-          citations: broaderResults.map((r) => ({
-            pageNumber: r.pageNumber,
-            source: r.source,
-            sourceLabel: SOURCE_LABELS[r.source] || r.sourceLabel,
-            excerpt: r.excerpt,
-          })),
+          citations: broaderResults.map((r) =>
+            toCitation(r.source, r.sourceLabel, r.pageNumber, r.excerpt)
+          ),
         };
       }
 
@@ -257,12 +501,9 @@ export async function executeToolCall(
 
       return {
         content,
-        citations: results.map((r) => ({
-          pageNumber: r.pageNumber,
-          source: r.source,
-          sourceLabel: SOURCE_LABELS[r.source] || r.sourceLabel,
-          excerpt: r.excerpt,
-        })),
+        citations: results.map((r) =>
+          toCitation(r.source, r.sourceLabel, r.pageNumber, r.excerpt)
+        ),
       };
     }
 

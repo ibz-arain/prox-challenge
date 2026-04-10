@@ -1,19 +1,48 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import ChatPanel from "@/components/chat/ChatPanel";
 import AppNav from "@/components/AppNav";
 import { CHAT_PAGE_MAX_WIDTH_CLASS } from "@/lib/chatLayout";
+import SourceViewerPanel from "@/components/sources/SourceViewerPanel";
 import type {
   ChatMessage,
   Citation,
   Artifact,
   PageImage,
+  SelectedSource,
   StreamEvent,
 } from "@/lib/types";
 
+const STORAGE_KEY = "omnipro-chat-session-v1";
+
 function makeId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function buildSelectedSourceSnapshot(
+  messages: ChatMessage[],
+  sourceId: string | null
+): SelectedSource | null {
+  if (!sourceId) return null;
+  for (const message of messages) {
+    const messageId = message.id;
+    if (!messageId || !message.citations?.length) continue;
+    for (const citation of message.citations) {
+      const candidateId = `source-${messageId}-${citation.source}-${citation.pageNumber}`;
+      if (candidateId !== sourceId) continue;
+      const pageImage = message.pageImages?.find(
+        (item) => item.source === citation.source && item.pageNumber === citation.pageNumber
+      );
+      return {
+        sourceId: candidateId,
+        messageId,
+        citation,
+        pageImage,
+      };
+    }
+  }
+  return null;
 }
 
 export default function Home() {
@@ -24,8 +53,54 @@ export default function Home() {
   const [hasTextStarted, setHasTextStarted] = useState(false);
   const [streamComplete, setStreamComplete] = useState(false);
   const [highlightedSourceId, setHighlightedSourceId] = useState<string | null>(null);
+  const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null);
+  const [isHydrated, setIsHydrated] = useState(false);
   const clearTrailTimeoutRef = useRef<number | null>(null);
   const streamAbortRef = useRef<AbortController | null>(null);
+
+  const selectedSource = useMemo(
+    () => buildSelectedSourceSnapshot(messages, selectedSourceId),
+    [messages, selectedSourceId]
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = window.localStorage.getItem(STORAGE_KEY);
+      if (!raw) {
+        setIsHydrated(true);
+        return;
+      }
+      const parsed = JSON.parse(raw) as {
+        messages?: ChatMessage[];
+        selectedSourceId?: string | null;
+      };
+      const savedMessages = Array.isArray(parsed.messages) ? parsed.messages : [];
+      setMessages(savedMessages);
+      setSelectedSourceId(parsed.selectedSourceId ?? null);
+    } catch {
+      /* ignore hydration errors */
+    } finally {
+      setIsHydrated(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isHydrated || typeof window === "undefined") return;
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        messages,
+        selectedSourceId,
+      })
+    );
+  }, [isHydrated, messages, selectedSourceId]);
+
+  useEffect(() => {
+    if (!selectedSourceId) return;
+    if (selectedSource) return;
+    setSelectedSourceId(null);
+  }, [selectedSource, selectedSourceId]);
 
   const cancelStream = useCallback(() => {
     streamAbortRef.current?.abort();
@@ -41,10 +116,19 @@ export default function Home() {
     setHasTextStarted(false);
     setStreamComplete(false);
     setHighlightedSourceId(null);
+    setSelectedSourceId(null);
     if (clearTrailTimeoutRef.current) {
       window.clearTimeout(clearTrailTimeoutRef.current);
       clearTrailTimeoutRef.current = null;
     }
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem(STORAGE_KEY);
+    }
+  }, []);
+
+  const handleSelectSource = useCallback((source: SelectedSource) => {
+    setSelectedSourceId(source.sourceId);
+    setHighlightedSourceId(source.sourceId);
   }, []);
 
   const sendMessage = useCallback(
@@ -67,6 +151,7 @@ export default function Home() {
       setHasTextStarted(false);
       setStreamComplete(false);
       setHighlightedSourceId(null);
+      setSelectedSourceId(null);
       if (clearTrailTimeoutRef.current) {
         window.clearTimeout(clearTrailTimeoutRef.current);
         clearTrailTimeoutRef.current = null;
@@ -102,10 +187,13 @@ export default function Home() {
         const decoder = new TextDecoder();
         let buffer = "";
         let assistantText = "";
+        let queuedDelta = "";
         let citations: Citation[] = [];
         let artifacts: Artifact[] = [];
         let pageImages: PageImage[] = [];
         let receivedDone = false;
+        let textStarted = false;
+        let flushTimeoutId: number | null = null;
 
         const updateAssistantMessage = (updates: Partial<ChatMessage>) => {
           setMessages((prev) => {
@@ -123,14 +211,43 @@ export default function Home() {
           setStatusTrail((prev) => [...prev, line]);
         };
 
+        const flushText = () => {
+          flushTimeoutId = null;
+          if (!queuedDelta) return;
+          assistantText += queuedDelta;
+          queuedDelta = "";
+          updateAssistantMessage({ content: assistantText });
+        };
+
+        const scheduleTextFlush = () => {
+          if (flushTimeoutId !== null) return;
+          flushTimeoutId = window.setTimeout(flushText, 32);
+        };
+
         const applyEvent = (payload: StreamEvent) => {
           const eventType = payload.type;
           if (eventType === "text_delta") {
             const delta = typeof payload.delta === "string" ? payload.delta : "";
-            if (!hasTextStarted && delta.length > 0) {
+            if (!textStarted && delta.length > 0) {
+              textStarted = true;
               setHasTextStarted(true);
             }
-            assistantText += delta;
+            queuedDelta += delta;
+            scheduleTextFlush();
+            return;
+          }
+
+          if (eventType === "text_replace") {
+            if (flushTimeoutId !== null) {
+              window.clearTimeout(flushTimeoutId);
+              flushTimeoutId = null;
+            }
+            queuedDelta = "";
+            assistantText = typeof payload.text === "string" ? payload.text : assistantText;
+            if (!textStarted && assistantText.length > 0) {
+              textStarted = true;
+              setHasTextStarted(true);
+            }
             updateAssistantMessage({ content: assistantText });
             return;
           }
@@ -194,7 +311,12 @@ export default function Home() {
             );
           }
 
+          if (eventType === "heartbeat") {
+            return;
+          }
+
           if (eventType === "done") {
+            flushText();
             receivedDone = true;
             setStreamComplete(true);
           }
@@ -226,6 +348,7 @@ export default function Home() {
         }
 
         if (!receivedDone) {
+          flushText();
           throw new Error("Response stream ended before completion.");
         }
       } catch (error) {
@@ -244,7 +367,7 @@ export default function Home() {
           const fallbackMessage: ChatMessage = {
             id: assistantMessageId,
             role: "assistant",
-            content: `Sorry, I encountered an error: ${errMsg}. If Anthropic credits are low, add OPENROUTER_API_KEY — the app will fall back automatically. Otherwise check your API keys and that manuals exist under files/.`,
+            content: `Sorry, I encountered an error: ${errMsg}. Check your ANTHROPIC_API_KEY in .env and make sure the manuals exist under files/.`,
           };
 
           if (
@@ -262,36 +385,46 @@ export default function Home() {
           streamAbortRef.current = null;
         }
         setIsLoading(false);
-        if (clearTrailTimeoutRef.current) {
-          window.clearTimeout(clearTrailTimeoutRef.current);
-        }
-        clearTrailTimeoutRef.current = window.setTimeout(() => {
-          setStatusTrail([]);
-        }, 320);
       }
     },
-    [hasTextStarted, messages]
+    [messages]
   );
 
   return (
-    <div className="relative flex h-screen flex-col overflow-hidden bg-[var(--color-bg)]">
+    <div className="flex min-h-dvh flex-col bg-(--color-bg)">
       <AppNav onHome={resetApp} />
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden pt-16">
+      <div className="flex min-h-0 flex-1 flex-col px-4 pb-6 pt-20 sm:px-6 sm:pb-8">
         <div
-          className={`mx-auto flex h-full w-full min-w-0 flex-col bg-[var(--color-bg)] ${CHAT_PAGE_MAX_WIDTH_CLASS}`}
+          className={`mx-auto flex min-h-0 w-full min-w-0 flex-1 items-stretch gap-6 bg-(--color-bg) ${CHAT_PAGE_MAX_WIDTH_CLASS}`}
         >
-          <ChatPanel
-            landingSessionKey={landingSessionKey}
-            messages={messages}
-            isLoading={isLoading}
-            statusTrail={statusTrail}
-            hasTextStarted={hasTextStarted}
-            streamComplete={streamComplete}
-            highlightedSourceId={highlightedSourceId}
-            onHighlightSource={setHighlightedSourceId}
-            onSend={sendMessage}
-            onCancel={cancelStream}
-          />
+          <div
+            className={`flex min-h-0 min-w-0 flex-1 flex-col ${selectedSource ? "max-w-176" : "max-w-none"}`}
+          >
+            <ChatPanel
+              landingSessionKey={landingSessionKey}
+              messages={messages}
+              isLoading={isLoading}
+              statusTrail={statusTrail}
+              hasTextStarted={hasTextStarted}
+              streamComplete={streamComplete}
+              highlightedSourceId={highlightedSourceId}
+              onHighlightSource={setHighlightedSourceId}
+              selectedSourceId={selectedSourceId}
+              onSelectSource={handleSelectSource}
+              splitView={Boolean(selectedSource)}
+              onSend={sendMessage}
+              onCancel={cancelStream}
+            />
+          </div>
+          {selectedSource && (
+            <SourceViewerPanel
+              source={selectedSource}
+              onClose={() => {
+                setSelectedSourceId(null);
+                setHighlightedSourceId(null);
+              }}
+            />
+          )}
         </div>
       </div>
     </div>

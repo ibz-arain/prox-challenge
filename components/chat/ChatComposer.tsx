@@ -14,24 +14,29 @@ import {
   CHAT_GUTTER_X_CLASS,
   CHAT_MAX_WIDTH_CLASS,
   CHAT_PAGE_MAX_WIDTH_CLASS,
+  CHAT_SPLIT_MAX_WIDTH_CLASS,
 } from "@/lib/chatLayout";
 
 /** Thread: fixed bottom fade so messages scroll under. */
 export function ComposerDock({
   children,
   className = "",
+  split = false,
 }: {
   children: ReactNode;
   className?: string;
+  split?: boolean;
 }) {
   return (
     <div
-      className={`pointer-events-none fixed inset-x-0 bottom-0 z-40 flex justify-center bg-linear-to-t from-[var(--color-bg)] via-[var(--color-bg)]/92 to-transparent pb-4 pt-20 ${className}`}
+      className={`pointer-events-none fixed inset-x-0 bottom-0 z-40 flex justify-center bg-linear-to-t from-(--color-bg) via-(--color-bg)/92 to-transparent pb-4 pt-20 ${className}`}
     >
       <div
         className={`pointer-events-auto mx-auto w-full ${CHAT_PAGE_MAX_WIDTH_CLASS} ${CHAT_GUTTER_X_CLASS}`}
       >
-        <div className={`mx-auto w-full ${CHAT_MAX_WIDTH_CLASS}`}>
+        <div
+          className={`w-full ${split ? `mr-auto ${CHAT_SPLIT_MAX_WIDTH_CLASS}` : `mx-auto ${CHAT_MAX_WIDTH_CLASS}`}`}
+        >
           {children}
         </div>
       </div>
@@ -216,10 +221,10 @@ const ChatComposer = forwardRef<HTMLDivElement, ChatComposerProps>(
 
         <div
           ref={ref}
-          className="w-full overflow-hidden rounded-2xl border border-white/10 bg-[var(--color-surface)]/90 shadow-[0_12px_40px_rgba(0,0,0,0.4),inset_0_1px_0_0_rgba(255,255,255,0.05)] ring-1 ring-white/5 backdrop-blur-xl transition-[border-color,box-shadow,ring-color] duration-200 ease-out hover:border-brand/50 hover:shadow-[0_0_0_1px_rgba(239,99,0,0.28),0_0_36px_rgba(239,99,0,0.18),0_12px_40px_rgba(0,0,0,0.4)] hover:ring-brand/25 focus-within:border-brand/50 focus-within:shadow-[0_0_0_1px_rgba(239,99,0,0.28),0_0_36px_rgba(239,99,0,0.18),0_12px_40px_rgba(0,0,0,0.4)] focus-within:ring-brand/25 focus-within:hover:border-brand/50 focus-within:hover:shadow-[0_0_0_1px_rgba(239,99,0,0.28),0_0_36px_rgba(239,99,0,0.18),0_12px_40px_rgba(0,0,0,0.4)] focus-within:hover:ring-brand/25"
+          className="w-full overflow-hidden rounded-2xl border border-white/10 bg-(--color-surface)/90 shadow-[0_12px_40px_rgba(0,0,0,0.4),inset_0_1px_0_0_rgba(255,255,255,0.05)] ring-1 ring-white/5 backdrop-blur-xl transition-[border-color,box-shadow,ring-color] duration-200 ease-out hover:border-brand/50 hover:shadow-[0_0_0_1px_rgba(239,99,0,0.28),0_0_36px_rgba(239,99,0,0.18),0_12px_40px_rgba(0,0,0,0.4)] hover:ring-brand/25 focus-within:border-brand/50 focus-within:shadow-[0_0_0_1px_rgba(239,99,0,0.28),0_0_36px_rgba(239,99,0,0.18),0_12px_40px_rgba(0,0,0,0.4)] focus-within:ring-brand/25 focus-within:hover:border-brand/50 focus-within:hover:shadow-[0_0_0_1px_rgba(239,99,0,0.28),0_0_36px_rgba(239,99,0,0.18),0_12px_40px_rgba(0,0,0,0.4)] focus-within:hover:ring-brand/25"
         >
           {imagePreview && (
-            <div className="flex items-start gap-2 border-b border-white/[0.06] px-4 py-2.5">
+            <div className="flex items-start gap-2 border-b border-white/6 px-4 py-2.5">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={imagePreview}
@@ -262,7 +267,7 @@ const ChatComposer = forwardRef<HTMLDivElement, ChatComposerProps>(
             />
           </div>
 
-          <div className="flex items-center gap-0.5 border-t border-white/[0.06] px-1.5 py-1.5">
+          <div className="flex items-center gap-0.5 border-t border-white/6 px-1.5 py-1.5">
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
@@ -305,10 +310,10 @@ const ChatComposer = forwardRef<HTMLDivElement, ChatComposerProps>(
               aria-label={showStop ? "Stop generation" : "Send message"}
             >
               {showStop ? (
-                <Square className="h-3.5 w-3.5 fill-current stroke-[2]" aria-hidden />
+                <Square className="h-3.5 w-3.5 fill-current stroke-2" aria-hidden />
               ) : (
                 <ArrowUp
-                  className={`h-4 w-4 stroke-[2] ${
+                  className={`h-4 w-4 stroke-2 ${
                     sendLooksReady ? "text-white" : "text-neutral-600"
                   }`}
                 />

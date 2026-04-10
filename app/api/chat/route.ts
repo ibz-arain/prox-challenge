@@ -17,10 +17,16 @@ export async function POST(req: NextRequest) {
     const stream = new TransformStream();
     const writer = stream.writable.getWriter();
     const encoder = new TextEncoder();
+    let closed = false;
 
     const sendEvent = async (payload: Record<string, unknown>) => {
+      if (closed) return;
       await writer.write(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`));
     };
+
+    const heartbeatId = setInterval(() => {
+      void sendEvent({ type: "heartbeat" });
+    }, 2500);
 
     void (async () => {
       try {
@@ -48,6 +54,7 @@ export async function POST(req: NextRequest) {
         if (!result.text) {
           await sendEvent({ type: "text_delta", delta: "" });
         }
+        await sendEvent({ type: "text_replace", text: result.text });
         await sendEvent({ type: "done" });
       } catch (error) {
         console.error("Chat stream error:", error);
@@ -55,6 +62,8 @@ export async function POST(req: NextRequest) {
         await sendEvent({ type: "error", error: message });
         await sendEvent({ type: "done" });
       } finally {
+        clearInterval(heartbeatId);
+        closed = true;
         await writer.close();
       }
     })();

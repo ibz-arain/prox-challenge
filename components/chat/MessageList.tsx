@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CHAT_GUTTER_X_CLASS, CHAT_MAX_WIDTH_CLASS } from "@/lib/chatLayout";
-import type { ChatMessage } from "@/lib/types";
+import type { ChatMessage, SelectedSource } from "@/lib/types";
 import UserMessage from "./UserMessage";
 import AssistantMessage from "./AssistantMessage";
 
@@ -14,6 +14,8 @@ interface MessageListProps {
   streamComplete: boolean;
   highlightedSourceId?: string | null;
   onHighlightSource: (sourceId: string) => void;
+  selectedSourceId?: string | null;
+  onSelectSource: (source: SelectedSource) => void;
   /** Enables entrance motion after first message (landing → thread). */
   enterReady?: boolean;
 }
@@ -26,6 +28,8 @@ export default function MessageList({
   streamComplete,
   highlightedSourceId,
   onHighlightSource,
+  selectedSourceId,
+  onSelectSource,
   enterReady = true,
 }: MessageListProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -70,7 +74,7 @@ export default function MessageList({
     <div
       ref={scrollRef}
       onScroll={handleScroll}
-      className={`sleek-scrollbar flex-1 space-y-10 overflow-y-auto pb-40 pt-6 ${CHAT_GUTTER_X_CLASS}`}
+      className={`space-y-10 pb-40 pt-6 ${CHAT_GUTTER_X_CLASS}`}
     >
       <div
         className={`mx-auto min-w-0 w-full space-y-10 transition-[opacity,transform] duration-500 ease-out motion-reduce:transition-none ${CHAT_MAX_WIDTH_CLASS} ${
@@ -92,6 +96,8 @@ export default function MessageList({
               streamComplete={index === statusTargetIndex ? streamComplete : true}
               highlightedSourceId={highlightedSourceId}
               onHighlightSource={onHighlightSource}
+              selectedSourceId={selectedSourceId}
+              onSelectSource={onSelectSource}
             />
           )
         )}

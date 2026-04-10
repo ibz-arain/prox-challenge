@@ -1,9 +1,9 @@
 "use client";
 
-import React, { type ReactNode } from "react";
+import React, { memo, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import type { ChatMessage } from "@/lib/types";
+import type { ChatMessage, SelectedSource } from "@/lib/types";
 import InlineCitation from "./InlineCitation";
 import StatusTrail from "./StatusTrail";
 import ArtifactRenderer from "../artifacts/ArtifactRenderer";
@@ -18,6 +18,8 @@ interface AssistantMessageProps {
   streamComplete: boolean;
   highlightedSourceId?: string | null;
   onHighlightSource: (sourceId: string) => void;
+  selectedSourceId?: string | null;
+  onSelectSource: (source: SelectedSource) => void;
 }
 
 function renderTextWithInlineCitations(
@@ -25,7 +27,7 @@ function renderTextWithInlineCitations(
   onCitationClick: (pageNumber: number) => void
 ): ReactNode[] {
   const nodes: ReactNode[] = [];
-  const regex = /(\[p\.(\d+)\]|\(page\s+(\d+)\))/gi;
+  const regex = /(\[p\.(\d+)\]|\((?:page|p\.)\s*(\d+)\)|\b(?:page|p\.)\s*(\d+)\b)/gi;
   let lastIndex = 0;
   let match: RegExpExecArray | null;
 
@@ -33,7 +35,7 @@ function renderTextWithInlineCitations(
     if (match.index > lastIndex) {
       nodes.push(text.slice(lastIndex, match.index));
     }
-    const pageNumber = Number(match[2] ?? match[3]);
+    const pageNumber = Number(match[2] ?? match[3] ?? match[4]);
     if (Number.isFinite(pageNumber)) {
       nodes.push(
         <InlineCitation
@@ -86,7 +88,14 @@ function getMessageId(message: ChatMessage, fallbackId: string) {
   return message.id ?? fallbackId;
 }
 
-export default function AssistantMessage({
+function sanitizeStreamingMarkdown(text: string) {
+  return text
+    .replace(/<artifact[\s\S]*$/i, "")
+    .replace(/<\/artifact>/gi, "")
+    .trimEnd();
+}
+
+function AssistantMessage({
   message,
   isStreaming,
   statusTrail,
@@ -94,17 +103,31 @@ export default function AssistantMessage({
   streamComplete,
   highlightedSourceId,
   onHighlightSource,
+  selectedSourceId,
+  onSelectSource,
 }: AssistantMessageProps) {
   const messageId = getMessageId(message, "assistant-message");
   const citations = message.citations ?? [];
   const artifacts = message.artifacts ?? [];
   const pageImages = message.pageImages ?? [];
+  const displayContent = isStreaming
+    ? sanitizeStreamingMarkdown(message.content)
+    : message.content;
 
   const onCitationClick = (pageNumber: number) => {
     const target = citations.find((citation) => citation.pageNumber === pageNumber);
     if (!target) return;
     const sourceId = getSourceCardId(messageId, target);
     onHighlightSource(sourceId);
+    onSelectSource({
+      sourceId,
+      messageId,
+      citation: target,
+      pageImage: pageImages.find(
+        (pageImage) =>
+          pageImage.pageNumber === target.pageNumber && pageImage.source === target.source
+      ),
+    });
     const targetNode = document.getElementById(sourceId);
     if (targetNode) {
       targetNode.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
@@ -124,15 +147,9 @@ export default function AssistantMessage({
             isDone={streamComplete}
           />
         )}
-        <div className="prose-chat flex min-w-0 items-start gap-2 text-sm leading-relaxed">
-          {isStreaming && (
-            <span
-              className="mt-[6px] inline-block h-4 w-0.5 shrink-0 animate-pulse rounded-sm bg-brand/80 motion-reduce:animate-none"
-              aria-hidden
-            />
-          )}
-          <div className="min-w-0 flex-1 overflow-x-auto">
-          <ReactMarkdown
+        <div className="prose-chat min-w-0 text-sm leading-relaxed">
+          <div className="min-w-0 overflow-x-auto">
+            <ReactMarkdown
               remarkPlugins={[remarkGfm]}
               components={{
                 p: ({ children }) => (
@@ -147,7 +164,7 @@ export default function AssistantMessage({
                   const isBlock = className?.includes("language-");
                   if (isBlock) {
                     return (
-                      <pre className="my-2 overflow-x-auto rounded-xl border border-white/[0.08] bg-neutral-950/80 p-3 shadow-inner ring-1 ring-white/[0.04]">
+                      <pre className="my-2 overflow-x-auto rounded-xl border border-white/8 bg-neutral-950/80 p-3 shadow-inner ring-1 ring-white/4">
                         <code className="font-mono text-xs text-neutral-200">{children}</code>
                       </pre>
                     );
@@ -185,13 +202,19 @@ export default function AssistantMessage({
                 ),
               }}
             >
-              {message.content}
+              {displayContent}
             </ReactMarkdown>
+            {isStreaming && (
+              <span
+                className="ml-0.5 inline-block h-[1em] w-0.5 animate-pulse rounded-sm bg-brand/80 align-[-0.12em] motion-reduce:animate-none"
+                aria-hidden
+              />
+            )}
           </div>
-          </div>
+        </div>
 
         {artifacts.length > 0 && (
-          <div className="space-y-3 border-t border-white/[0.06] pt-3">
+          <div className="space-y-3 border-t border-white/6 pt-3">
             {artifacts.map((artifact, index) => (
               <ArtifactContainer key={`${artifact.title}-${index}`}>
                 <ArtifactRenderer artifact={artifact} />
@@ -204,10 +227,14 @@ export default function AssistantMessage({
           messageId={messageId}
           citations={citations}
           pageImages={pageImages}
-          visible={!isStreaming}
+          visible={citations.length > 0}
           highlightedSourceId={highlightedSourceId}
+          selectedSourceId={selectedSourceId}
+          onSelectSource={onSelectSource}
         />
       </div>
     </div>
   );
 }
+
+export default memo(AssistantMessage);

@@ -1,7 +1,4 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { resolveOpenRouterModel } from "../agent/client";
-
-const OPENROUTER_BASE_URL = "https://openrouter.ai/api";
 const VISION_PROMPT =
   "This is a page from a welding machine manual. Extract ALL technical content from this image: tables, charts, settings, labels, numbers, and any structured data. Return it as clean, structured text preserving all data relationships.";
 
@@ -27,18 +24,6 @@ function getVisionClientConfig(): VisionClientConfig | null {
     cachedConfig = {
       client: new Anthropic({ apiKey: anthropicKey }),
       models: ANTHROPIC_MODELS,
-    };
-    return cachedConfig;
-  }
-
-  const openrouterKey = process.env.OPENROUTER_API_KEY?.trim();
-  if (openrouterKey) {
-    cachedConfig = {
-      client: new Anthropic({
-        apiKey: openrouterKey,
-        baseURL: OPENROUTER_BASE_URL,
-      }),
-      models: [resolveOpenRouterModel()],
     };
     return cachedConfig;
   }
