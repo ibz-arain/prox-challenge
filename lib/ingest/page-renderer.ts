@@ -9,14 +9,17 @@ import { join, basename } from "path";
 import type { PageData } from "../types";
 import { getCreateCanvas } from "./canvas-factory";
 import { configureLegacyPdfjsWorker } from "./pdfjs-server";
+import {
+  getFilesDir,
+  getPageImagesDir,
+  getStaticManualPagesDir,
+} from "../paths";
 
-const FILES_DIR = join(process.cwd(), "files");
-const GENERATED_DIR = join(process.cwd(), "generated");
-const IMAGES_DIR = join(GENERATED_DIR, "page-images");
-const STATIC_IMAGES_DIR = join(process.cwd(), "public", "manual-pages");
+const IMAGES_DIR = getPageImagesDir();
+const STATIC_IMAGES_DIR = getStaticManualPagesDir();
 
 export function getPageImagePath(source: string, pageNumber: number): string {
-  return join(IMAGES_DIR, `${source}-page-${pageNumber}.png`);
+  return join(getPageImagesDir(), `${source}-page-${pageNumber}.png`);
 }
 
 export function getStaticPageImagePath(source: string, pageNumber: number): string {
@@ -24,14 +27,14 @@ export function getStaticPageImagePath(source: string, pageNumber: number): stri
 }
 
 export function getSourcePdfPath(source: string): string {
-  return join(FILES_DIR, `${source}.pdf`);
+  return join(getFilesDir(), `${source}.pdf`);
 }
 
+/** True if we can show a page image: cached PNG, legacy static asset, or on-demand PDF render. */
 export function pageImageExists(source: string, pageNumber: number): boolean {
-  return (
-    existsSync(getStaticPageImagePath(source, pageNumber)) ||
-    existsSync(getPageImagePath(source, pageNumber))
-  );
+  if (existsSync(getStaticPageImagePath(source, pageNumber))) return true;
+  if (existsSync(getPageImagePath(source, pageNumber))) return true;
+  return existsSync(getSourcePdfPath(source));
 }
 
 interface MatchableTextItem {
@@ -415,11 +418,11 @@ export async function renderCriticalPageImages(
 
   const rendered = await renderPagesToDirectory(
     filesDir,
-    STATIC_IMAGES_DIR,
+    IMAGES_DIR,
     selectedPagesBySource,
-    (source, pageNumber) => `${source}-p${pageNumber}.png`
+    (source, pageNumber) => `${source}-page-${pageNumber}.png`
   );
-  console.log(`  ${rendered} static critical page images rendered`);
+  console.log(`  ${rendered} critical page images cached (same paths as on-demand API cache)`);
   return rendered;
 }
 
@@ -429,9 +432,11 @@ export async function renderPageImages(filesDir: string): Promise<number> {
     const createCanvasFn = await getCreateCanvas();
     if (!createCanvasFn) {
       console.log(
-        "  canvas backend unavailable — skipping dynamic page image rendering."
+        "  canvas backend unavailable — skipping PNG cache pre-render."
       );
-      console.log("  Static pre-rendered manual pages will still be served.\n");
+      console.log(
+        "  Manual pages can still be rendered on demand via pdf.js (e.g. /api/pages/...).\n"
+      );
       return 0;
     }
 

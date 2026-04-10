@@ -1,13 +1,13 @@
 import { existsSync } from "fs";
-import { join } from "path";
 import { parseAllPdfs } from "../lib/ingest/pdf-parser";
 import { buildIndex, saveIndex } from "../lib/ingest/indexer";
 import {
   renderPageImages,
   renderCriticalPageImages,
 } from "../lib/ingest/page-renderer";
+import { getFilesDir } from "../lib/paths";
 
-const FILES_DIR = join(process.cwd(), "files");
+const FILES_DIR = getFilesDir();
 
 async function main() {
   console.log("=== OmniPro 220 Manual Ingestion ===\n");

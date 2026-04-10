@@ -2,8 +2,9 @@ import MiniSearch from "minisearch";
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
 import { join } from "path";
 import type { PageData, IngestStatus } from "../types";
+import { getGeneratedDir } from "../paths";
 
-const GENERATED_DIR = join(process.cwd(), "generated");
+const GENERATED_DIR = getGeneratedDir();
 const INDEX_PATH = join(GENERATED_DIR, "index.json");
 const PAGES_PATH = join(GENERATED_DIR, "pages.json");
 const STATUS_PATH = join(GENERATED_DIR, "status.json");

@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
-import { readFileSync, existsSync } from "fs";
+import { readFileSync, existsSync, mkdirSync, writeFileSync } from "fs";
+import { dirname } from "path";
 import {
   getPageImagePath,
   getStaticPageImagePath,
@@ -45,6 +46,17 @@ export async function GET(
   const buffer = await renderPageToPng(source, pageNum, { highlightText });
   if (!buffer) {
     return Response.json({ error: "Page image not found." }, { status: 404 });
+  }
+
+  if (!highlightText) {
+    try {
+      const cachePath = getPageImagePath(source, pageNum);
+      const dir = dirname(cachePath);
+      if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+      writeFileSync(cachePath, buffer);
+    } catch {
+      // optional cache under generated/ or /tmp on serverless
+    }
   }
 
   return new Response(new Uint8Array(buffer), {

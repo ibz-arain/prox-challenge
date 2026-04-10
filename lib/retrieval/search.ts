@@ -2,8 +2,8 @@ import MiniSearch from "minisearch";
 import { loadIndex, loadPages, isIndexReady } from "../ingest/indexer";
 import { parseAllPdfs } from "../ingest/pdf-parser";
 import { buildIndex, saveIndex } from "../ingest/indexer";
-import { join } from "path";
 import { existsSync } from "fs";
+import { getFilesDir } from "../paths";
 import type { PageData, SearchResult } from "../types";
 import { pickSearchExcerpt } from "../citationExcerpt";
 
@@ -26,7 +26,7 @@ async function ensureIndex(): Promise<{
     }
   }
 
-  const filesDir = join(process.cwd(), "files");
+  const filesDir = getFilesDir();
   if (!existsSync(filesDir)) {
     throw new Error(
       "No files/ directory found and no pre-built index. Run npm run ingest first."

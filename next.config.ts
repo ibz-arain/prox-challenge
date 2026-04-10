@@ -9,7 +9,7 @@ const PDFJS_WORKER_TRACE_FILES = [
 ];
 
 const nextConfig: NextConfig = {
-  serverExternalPackages: ["pdfjs-dist", "canvas"],
+  serverExternalPackages: ["pdfjs-dist", "canvas", "@napi-rs/canvas"],
   outputFileTracingIncludes: {
     "/api/chat": [...PDFJS_WORKER_TRACE_FILES],
     "/api/pages/[source]/[page]": [...PDFJS_WORKER_TRACE_FILES],
