@@ -65,6 +65,17 @@ body {
   }
 }
 
+@keyframes chat-status-line-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 @layer utilities {
   .sleek-scrollbar {
     scrollbar-width: thin;
@@ -94,6 +105,16 @@ body {
 
   .animate-pulse-breath {
     animation: pulse-animation 900ms ease-in-out infinite;
+  }
+
+  .chat-status-line-enter {
+    animation: chat-status-line-in 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .chat-status-line-enter {
+      animation: none;
+    }
   }
 
   /**

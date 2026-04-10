@@ -8,6 +8,7 @@ import {
   useState,
   type KeyboardEvent,
   type ReactNode,
+  type Ref,
 } from "react";
 import { ArrowUp, ImagePlus, Mic, Square } from "lucide-react";
 import {
@@ -21,21 +22,33 @@ import {
  * Uses `absolute` inside `ChatPanel`’s `relative` shell so width matches `max-w-6xl` + flex row layout.
  */
 export function ComposerDock({
-  children,
+  children = null,
   className = "",
+  innerRef,
+  /** When true, skip width/padding transitions so FLIP transform is the only motion. */
+  muteLayoutTransition = false,
 }: {
-  children: ReactNode;
+  children?: ReactNode;
   className?: string;
+  innerRef?: Ref<HTMLDivElement>;
+  muteLayoutTransition?: boolean;
 }) {
+  const layoutTw = muteLayoutTransition
+    ? "transition-none"
+    : "transition-[max-width,padding,margin] duration-300 ease-out";
+  const maxWidthTw = muteLayoutTransition
+    ? "transition-none"
+    : "transition-[max-width] duration-300 ease-out";
   return (
     <div
       className={`pointer-events-none absolute inset-x-0 bottom-0 z-40 flex justify-center bg-linear-to-t from-(--color-bg) via-(--color-bg)/92 to-transparent pb-4 pt-20 md:right-2 ${className}`}
     >
       <div
-        className={`pointer-events-auto mx-auto w-full transition-[max-width,padding,margin] duration-300 ease-out ${CHAT_PAGE_MAX_WIDTH_CLASS} ${CHAT_GUTTER_X_CLASS}`}
+        className={`pointer-events-auto mx-auto w-full ${layoutTw} ${CHAT_PAGE_MAX_WIDTH_CLASS} ${CHAT_GUTTER_X_CLASS}`}
       >
         <div
-          className={`mx-auto w-full transition-[max-width] duration-300 ease-out ${CHAT_MAX_WIDTH_CLASS}`}
+          ref={innerRef}
+          className={`mx-auto w-full ${maxWidthTw} ${CHAT_MAX_WIDTH_CLASS}`}
         >
           {children}
         </div>
@@ -63,7 +76,7 @@ type WebSpeechRecognition = {
 
 export type ChatComposerProps = {
   mode: ChatComposerMode;
-  onSend: (message: string, image?: string) => void;
+  onSend: (message: string, image?: string, imageMimeType?: string) => void;
   /** Stops an in-flight streamed response (thread mode). */
   onCancel?: () => void;
   disabled?: boolean;
@@ -71,6 +84,8 @@ export type ChatComposerProps = {
   placeholder?: string;
   /** Landing resets when key changes (new session). */
   sessionKey?: number;
+  /** When `id` changes, replaces the textarea with `text` (e.g. artifact suggestion click). */
+  composerFill?: { id: number; text: string } | null;
   className?: string;
 };
 
@@ -94,12 +109,14 @@ const ChatComposer = forwardRef<HTMLDivElement, ChatComposerProps>(
       isSending = false,
       placeholder,
       sessionKey = 0,
+      composerFill = null,
       className = "",
     },
     ref
   ) {
     const [text, setText] = useState("");
     const [image, setImage] = useState<string | null>(null);
+    const [imageMimeType, setImageMimeType] = useState<string | null>(null);
     const [imagePreview, setImagePreview] = useState<string | null>(null);
     const [listening, setListening] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -112,9 +129,23 @@ const ChatComposer = forwardRef<HTMLDivElement, ChatComposerProps>(
       if (mode !== "landing") return;
       setText("");
       setImage(null);
+      setImageMimeType(null);
       setImagePreview(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
     }, [sessionKey, mode]);
+
+    useEffect(() => {
+      if (!composerFill?.id) return;
+      setText(composerFill.text);
+      queueMicrotask(() => {
+        const ta = textAreaRef.current;
+        if (!ta) return;
+        ta.focus();
+        ta.style.height = "auto";
+        ta.style.height =
+          Math.min(ta.scrollHeight, Math.min(window.innerHeight * 0.4, 200)) + "px";
+      });
+    }, [composerFill?.id, composerFill?.text]);
 
     useEffect(() => {
       return () => {
@@ -129,12 +160,15 @@ const ChatComposer = forwardRef<HTMLDivElement, ChatComposerProps>(
     const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (!file) return;
+      const mime = file.type?.trim() || undefined;
       const reader = new FileReader();
       reader.onload = (ev) => {
         const dataUrl = ev.target?.result as string;
         setImagePreview(dataUrl);
         const base64 = dataUrl.split(",")[1];
         setImage(base64);
+        const fromDataUrl = dataUrl.match(/^data:([^;,]+)/)?.[1]?.trim();
+        setImageMimeType(mime || fromDataUrl || null);
       };
       reader.readAsDataURL(file);
     };
@@ -142,14 +176,19 @@ const ChatComposer = forwardRef<HTMLDivElement, ChatComposerProps>(
     const submit = useCallback(() => {
       const trimmed = text.trim();
       if (!trimmed && !image) return;
-      onSend(trimmed || "What is this?", image ?? undefined);
+      onSend(
+        trimmed || "What is this?",
+        image ?? undefined,
+        imageMimeType ?? undefined
+      );
       /* Landing stays mounted during dock FLIP — keep text/image until unmount so layout is stable. */
       if (mode === "landing") return;
       setText("");
       setImage(null);
+      setImageMimeType(null);
       setImagePreview(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
-    }, [text, image, onSend, mode]);
+    }, [text, image, imageMimeType, onSend, mode]);
 
     const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
       if (e.key === "Enter" && !e.shiftKey) {
@@ -229,12 +268,13 @@ const ChatComposer = forwardRef<HTMLDivElement, ChatComposerProps>(
               <img
                 src={imagePreview}
                 alt=""
-                className="h-14 max-w-[200px] rounded-lg border border-white/10 object-cover"
+                className="h-14 w-14 shrink-0 rounded-lg border border-white/10 object-cover"
               />
               <button
                 type="button"
                 onClick={() => {
                   setImage(null);
+                  setImageMimeType(null);
                   setImagePreview(null);
                   if (fileInputRef.current) fileInputRef.current.value = "";
                 }}

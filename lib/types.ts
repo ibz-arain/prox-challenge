@@ -35,7 +35,8 @@ export interface Artifact {
     | "flowchart"
     | "calculator"
     | "settings-card"
-    | "artifact-html";
+    | "artifact-html"
+    | "step-list";
   title: string;
   content: string;
 }
@@ -60,10 +61,15 @@ export interface ChatMessage {
   id?: string;
   role: "user" | "assistant";
   content: string;
+  /** Raw base64 (no data: prefix). */
   image?: string;
+  /** From the File API, e.g. image/png — used for API + correct UI data URLs. */
+  imageMimeType?: string;
   citations?: Citation[];
   artifacts?: Artifact[];
   pageImages?: PageImage[];
+  /** Agent status lines from this turn; persisted with the session so refresh keeps “Thinking”. */
+  thinkingSteps?: string[];
 }
 
 export interface StreamEvent {

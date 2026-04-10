@@ -4,6 +4,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { User, Bot } from "lucide-react";
 import ArtifactRenderer from "../artifacts/ArtifactRenderer";
+import { dataUrlFromBase64 } from "@/lib/imageMime";
 import type { ChatMessage } from "@/lib/types";
 
 interface MessageBubbleProps {
@@ -35,18 +36,18 @@ export default function MessageBubble({
 
       <div className={`flex-1 max-w-[94%] sm:max-w-[85%] ${isUser ? "text-right" : ""}`}>
         {isUser ? (
-          <div className="inline-block text-left">
+          <div className="flex flex-col items-end gap-2 text-left">
             {message.image && (
-              <div className="mb-2 inline-block rounded-xl overflow-hidden border border-neutral-800 shadow-sm">
+              <div className="h-14 w-14 shrink-0 overflow-hidden rounded-lg border border-neutral-800 shadow-sm sm:h-16 sm:w-16">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  src={`data:image/jpeg;base64,${message.image}`}
+                  src={dataUrlFromBase64(message.image, message.imageMimeType)}
                   alt="Uploaded"
-                  className="max-w-[200px] max-h-[150px] object-cover"
+                  className="h-full w-full object-cover"
                 />
               </div>
             )}
-            <div className="px-4 py-3 rounded-xl rounded-tr-md bg-neutral-800 text-sm text-neutral-100 leading-relaxed shadow-sm ring-1 ring-neutral-700">
+            <div className="inline-block max-w-full rounded-xl rounded-tr-md bg-neutral-800 px-4 py-3 text-sm leading-relaxed text-neutral-100 shadow-sm ring-1 ring-neutral-700">
               {message.content}
             </div>
           </div>

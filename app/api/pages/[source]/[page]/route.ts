@@ -22,7 +22,7 @@ export async function GET(
     const staticImagePath = getStaticPageImagePath(source, pageNum);
     if (existsSync(staticImagePath)) {
       const staticBuffer = readFileSync(staticImagePath);
-      return new Response(staticBuffer, {
+      return new Response(new Uint8Array(staticBuffer), {
         headers: {
           "Content-Type": "image/png",
           "Cache-Control": "public, max-age=86400",
@@ -33,7 +33,7 @@ export async function GET(
     const imagePath = getPageImagePath(source, pageNum);
     if (existsSync(imagePath)) {
       const buffer = readFileSync(imagePath);
-      return new Response(buffer, {
+      return new Response(new Uint8Array(buffer), {
         headers: {
           "Content-Type": "image/png",
           "Cache-Control": "public, max-age=86400",
@@ -47,7 +47,7 @@ export async function GET(
     return Response.json({ error: "Page image not found." }, { status: 404 });
   }
 
-  return new Response(buffer, {
+  return new Response(new Uint8Array(buffer), {
     headers: {
       "Content-Type": "image/png",
       "Cache-Control": highlightText

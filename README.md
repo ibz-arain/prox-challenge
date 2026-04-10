@@ -140,8 +140,10 @@ The agent returns markdown with embedded `<artifact>` tags. The frontend parses 
 | `table` | TableArtifact | Duty cycle matrices, settings tables, spec comparisons |
 | `svg-diagram` | DiagramArtifact | Polarity diagrams, cable connections, socket placement |
 | `flowchart` | FlowchartArtifact | Interactive troubleshooting decision trees |
-| `calculator` | CalculatorWidget | Duty cycle calculator, settings configurator |
+| `calculator` | CalculatorWidget | Duty cycle, thermal-rest, gas-flow sliders, settings configurator (`type` in JSON) |
 | `settings-card` | SettingsCard | Recommended welding parameter cards |
+| `step-list` | StepListArtifact | Ordered setup / maintenance steps (JSON `steps` array) |
+| `artifact-html` | HtmlArtifact | Safety callouts, checklists, custom HTML/CSS |
 
 ### Evidence Panel
 
@@ -153,7 +155,7 @@ Every response populates a right-side evidence panel with:
 ## Agent Behavior
 
 The Claude agent follows these principles:
-- **Always search first** — never answers from memory; always queries the manual index
+- **Search when needed** — for new questions, queries the manual index; skips redundant searches when the thread already has a complete, cited answer
 - **Cite sources** — every answer references specific pages
 - **Ask when uncertain** — if the question is ambiguous or evidence is weak, asks a clarifying question
 - **Safety-aware** — includes relevant safety warnings without being preachy

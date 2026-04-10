@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import {
   BookOpen,
   ChevronRight,
@@ -21,10 +21,19 @@ interface StatusTrailProps {
 
 function iconForLine(line: string) {
   const l = line.toLowerCase();
+  if (l.includes("putting it together")) return Sparkles;
+  if (l.includes("double-checking") || l.includes("one more look")) return FileSearch;
   if (l.includes("synthesiz")) return Sparkles;
   if (l.includes("searching") || l.includes("search")) return Search;
-  if (l.includes("reading")) return BookOpen;
-  if (l.includes("pulling") || l.includes("diagram") || l.includes("loading"))
+  if (l.includes("reading") || l.includes("read page") || l.includes("read pages"))
+    return BookOpen;
+  if (
+    l.includes("pulling") ||
+    l.includes("pulled") ||
+    l.includes("diagram") ||
+    l.includes("loading") ||
+    l.includes("got the")
+  )
     return ImageIcon;
   if (l.includes("found")) return FileSearch;
   if (l.includes("spec") || l.includes("looking up")) return Wrench;
@@ -37,14 +46,21 @@ function StatusLine({
   line,
   latest,
   toolsInProgress,
+  animateIn,
+  style,
 }: {
   line: string;
   latest: boolean;
   toolsInProgress: boolean;
+  animateIn?: boolean;
+  style?: CSSProperties;
 }) {
   const Icon = iconForLine(line);
   return (
-    <li className="flex min-w-0 gap-2">
+    <li
+      style={style}
+      className={`flex min-w-0 gap-2 ${animateIn ? "chat-status-line-enter" : ""}`}
+    >
       <span
         className={`inline-flex h-4.5 shrink-0 items-center text-neutral-500 ${
           toolsInProgress ? "text-brand-hover" : ""
@@ -158,10 +174,14 @@ export default function StatusTrail({
           <ul className="mt-2 space-y-2 border-l border-white/10 pl-3">
             {collapseData.lines.map((line, index) => (
               <StatusLine
-                key={`${index}-${line.slice(0, 32)}`}
+                key={`done-${index}`}
                 line={line}
                 latest={index === collapseData.lines.length - 1}
                 toolsInProgress={false}
+                animateIn
+                style={{
+                  animationDelay: `${Math.min(index * 40, 400)}ms`,
+                }}
               />
             ))}
           </ul>
@@ -186,10 +206,11 @@ export default function StatusTrail({
           const toolsInProgress = Boolean(latest && streamActive && !isDone);
           return (
             <StatusLine
-              key={`${index}-${line.slice(0, 24)}`}
+              key={`live-${index}`}
               line={line}
               latest={latest}
               toolsInProgress={toolsInProgress}
+              animateIn
             />
           );
         })}

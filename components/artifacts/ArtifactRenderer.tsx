@@ -7,12 +7,17 @@ import FlowchartArtifact from "./FlowchartArtifact";
 import CalculatorWidget from "./CalculatorWidget";
 import SettingsCard from "./SettingsCard";
 import HtmlArtifact from "./HtmlArtifact";
+import StepListArtifact from "./StepListArtifact";
 
 interface ArtifactRendererProps {
   artifact: Artifact;
+  onFillComposer?: (text: string) => void;
 }
 
-export default function ArtifactRenderer({ artifact }: ArtifactRendererProps) {
+export default function ArtifactRenderer({
+  artifact,
+  onFillComposer,
+}: ArtifactRendererProps) {
   switch (artifact.type) {
     case "table":
       return <TableArtifact title={artifact.title} content={artifact.content} />;
@@ -30,8 +35,18 @@ export default function ArtifactRenderer({ artifact }: ArtifactRendererProps) {
       );
     case "settings-card":
       return <SettingsCard title={artifact.title} content={artifact.content} />;
+    case "step-list":
+      return (
+        <StepListArtifact title={artifact.title} content={artifact.content} />
+      );
     case "artifact-html":
-      return <HtmlArtifact title={artifact.title} content={artifact.content} />;
+      return (
+        <HtmlArtifact
+          title={artifact.title}
+          content={artifact.content}
+          onFillComposer={onFillComposer}
+        />
+      );
     default:
       return (
         <div className="artifact-card my-4">

@@ -4,6 +4,7 @@ import { formatApiErrorForUser } from "@/lib/agent/client";
 import type { ChatMessage } from "@/lib/types";
 
 export const maxDuration = 60;
+const DEBUG_PREFIX = "[omni-chat-api]";
 
 export async function POST(req: NextRequest) {
   try {
@@ -13,6 +14,13 @@ export async function POST(req: NextRequest) {
     if (!messages.length) {
       return Response.json({ error: "No messages provided" }, { status: 400 });
     }
+
+    const latestUserMessage =
+      [...messages].reverse().find((message) => message.role === "user")?.content ?? "";
+    console.log(DEBUG_PREFIX, "request received", {
+      messageCount: messages.length,
+      latestUserPreview: latestUserMessage.slice(0, 160),
+    });
 
     const stream = new TransformStream();
     const writer = stream.writable.getWriter();
@@ -51,6 +59,13 @@ export async function POST(req: NextRequest) {
           },
         });
 
+        console.log(DEBUG_PREFIX, "runAgent completed", {
+          textLength: result.text.length,
+          citationCount: result.citations.length,
+          artifactCount: result.artifacts.length,
+          pageImageCount: result.pageImages.length,
+        });
+
         if (!result.text) {
           await sendEvent({ type: "text_delta", delta: "" });
         }
@@ -59,11 +74,13 @@ export async function POST(req: NextRequest) {
       } catch (error) {
         console.error("Chat stream error:", error);
         const message = formatApiErrorForUser(error);
+        console.error(DEBUG_PREFIX, "stream failed", { message });
         await sendEvent({ type: "error", error: message });
         await sendEvent({ type: "done" });
       } finally {
         clearInterval(heartbeatId);
         closed = true;
+        console.log(DEBUG_PREFIX, "stream closed");
         await writer.close();
       }
     })();
@@ -78,6 +95,7 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     console.error("Chat API error:", error);
     const message = formatApiErrorForUser(error);
+    console.error(DEBUG_PREFIX, "request failed", { message });
     return Response.json({ error: message }, { status: 500 });
   }
 }

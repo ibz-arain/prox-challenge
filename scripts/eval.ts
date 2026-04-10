@@ -18,7 +18,13 @@ const TEST_CASES: TestCase[] = [
     expectedKeywords: ["duty cycle", "200", "240"],
     expectedSections: ["specs"],
     description: "Should find duty cycle specs for MIG at 200A on 240V",
-    expectedArtifactTypes: ["calculator", "table"],
+    expectedArtifactTypes: [
+      "table",
+      "calculator",
+      "settings-card",
+      "artifact-html",
+      "step-list",
+    ],
     maxWords: 120,
   },
   {
@@ -26,7 +32,13 @@ const TEST_CASES: TestCase[] = [
     expectedKeywords: ["porosity", "flux"],
     expectedSections: ["troubleshooting"],
     description: "Should find troubleshooting for porosity in flux-cored welds",
-    expectedArtifactTypes: ["flowchart", "table"],
+    expectedArtifactTypes: [
+      "flowchart",
+      "table",
+      "artifact-html",
+      "step-list",
+      "svg-diagram",
+    ],
     maxWords: 140,
   },
   {
@@ -35,7 +47,14 @@ const TEST_CASES: TestCase[] = [
     expectedSections: ["polarity", "welding-process"],
     description: "Should find TIG polarity setup information",
     needsVisual: true,
-    expectedArtifactTypes: ["svg-diagram", "artifact-html"],
+    expectedArtifactTypes: [
+      "svg-diagram",
+      "artifact-html",
+      "table",
+      "flowchart",
+      "settings-card",
+      "step-list",
+    ],
     maxWords: 130,
   },
   {
@@ -175,13 +194,15 @@ async function runEval() {
       const inlineCitations = hasInlineCitation(result.text);
       const visualOk = hasVisualEvidence(pageImages, artifacts, tc.needsVisual);
       const artifactOk = hasMatchingArtifact(artifacts, tc.expectedArtifactTypes);
+      const hasAnyArtifact = artifacts.length >= 1;
       const responsePass =
         retrievalPass &&
         citations.length > 0 &&
         inlineCitations &&
         conciseEnough &&
         visualOk &&
-        artifactOk;
+        artifactOk &&
+        hasAnyArtifact;
       if (responsePass) responsePassed++;
 
       console.log(

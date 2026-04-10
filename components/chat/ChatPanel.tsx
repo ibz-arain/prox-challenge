@@ -7,10 +7,8 @@ import {
   useRef,
   useLayoutEffect,
 } from "react";
-import {
-  CHAT_MAX_WIDTH_CLASS,
-  CHAT_PAGE_MAX_WIDTH_CLASS,
-} from "@/lib/chatLayout";
+import { createPortal } from "react-dom";
+import { CHAT_MAX_WIDTH_CLASS } from "@/lib/chatLayout";
 import MessageList from "./MessageList";
 import ChatComposer, { ComposerDock } from "./ChatComposer";
 import type { ChatMessage, SelectedSource } from "@/lib/types";
@@ -35,12 +33,12 @@ const LANDING_SUGGESTIONS: { id: string; query: string }[] = [
   },
 ];
 
-const DOCK_MS = 560;
-const DOCK_EASING = "cubic-bezier(0.25, 0.82, 0.2, 1)";
+const DOCK_MS = 640;
+const DOCK_EASING = "cubic-bezier(0.22, 1, 0.36, 1)";
 /** Fade landing chrome (heading + try asking) before the composer FLIP so nothing slides over the input. */
 const LANDING_CHROME_FADE_MS = 220;
 
-type PendingSend = { text: string; image?: string };
+type PendingSend = { text: string; image?: string; imageMimeType?: string };
 
 function TypewriterHeading({
   sessionKey,
@@ -133,8 +131,11 @@ interface ChatPanelProps {
   onHighlightSource: (sourceId: string) => void;
   selectedSourceId?: string | null;
   onSelectSource: (source: SelectedSource) => void;
-  onSend: (message: string, image?: string) => void;
+  onSend: (message: string, image?: string, imageMimeType?: string) => void;
   onCancel?: () => void;
+  /** Load text into the bottom composer (e.g. HTML artifact suggestion click). */
+  onFillComposer?: (text: string) => void;
+  composerFill?: { id: number; text: string } | null;
 }
 
 export default function ChatPanel({
@@ -150,17 +151,27 @@ export default function ChatPanel({
   onSelectSource,
   onSend,
   onCancel,
+  onFillComposer,
+  composerFill = null,
 }: ChatPanelProps) {
   const [docked, setDocked] = useState(false);
   const [dockLocked, setDockLocked] = useState(false);
   const [fadeLandingChrome, setFadeLandingChrome] = useState(false);
   const [reduceMotion, setReduceMotion] = useState(false);
   const [threadEntered, setThreadEntered] = useState(false);
+  const [portalHost, setPortalHost] = useState<HTMLElement | null>(null);
 
   const barRef = useRef<HTMLDivElement>(null);
   const firstRectRef = useRef<DOMRect | null>(null);
   const pendingSendRef = useRef<PendingSend | null>(null);
   const dockDelayTimeoutRef = useRef<number | undefined>(undefined);
+  const landingHostRef = useRef<HTMLDivElement>(null);
+  const dockHostRef = useRef<HTMLDivElement>(null);
+
+  const showThread = messages.length > 0;
+  const showDock = docked || showThread;
+  /** True while animating landing → dock (before messages exist). */
+  const dockAnimating = docked && !showThread;
 
   useEffect(() => {
     const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -236,8 +247,14 @@ export default function ChatPanel({
     const pending = pendingSendRef.current;
     pendingSendRef.current = null;
     firstRectRef.current = null;
-    if (pending) onSend(pending.text, pending.image);
+    if (pending) onSend(pending.text, pending.image, pending.imageMimeType);
   }, [onSend]);
+
+  /** Keep the composer in one DOM host; must run before FLIP measures the docked bar. */
+  useLayoutEffect(() => {
+    const host = showDock ? dockHostRef.current : landingHostRef.current;
+    setPortalHost((prev) => (prev === host ? prev : host));
+  }, [showDock]);
 
   useLayoutEffect(() => {
     if (!docked || !pendingSendRef.current || !firstRectRef.current) return;
@@ -277,7 +294,7 @@ export default function ChatPanel({
       finishDock();
     };
 
-    const fallbackId = window.setTimeout(settle, DOCK_MS + 180);
+    const fallbackId = window.setTimeout(settle, DOCK_MS + 220);
 
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
@@ -302,23 +319,27 @@ export default function ChatPanel({
   }, [docked, finishDock, reduceMotion]);
 
   const beginSend = useCallback(
-    (raw: string, image?: string) => {
+    (raw: string, image?: string, imageMimeType?: string) => {
       const q = raw.trim();
       if ((!q && !image) || isLoading || dockLocked) return;
 
       if (reduceMotion) {
-        onSend(q || "What is this?", image);
+        onSend(q || "What is this?", image, imageMimeType);
         return;
       }
 
       const el = barRef.current;
       if (!el) {
-        onSend(q || "What is this?", image);
+        onSend(q || "What is this?", image, imageMimeType);
         return;
       }
 
       firstRectRef.current = el.getBoundingClientRect();
-      pendingSendRef.current = { text: q || "What is this?", image };
+      pendingSendRef.current = {
+        text: q || "What is this?",
+        image,
+        imageMimeType,
+      };
       setDockLocked(true);
       setFadeLandingChrome(true);
       if (dockDelayTimeoutRef.current !== undefined) {
@@ -332,9 +353,27 @@ export default function ChatPanel({
     [isLoading, dockLocked, reduceMotion, onSend]
   );
 
-  if (messages.length > 0) {
-    return (
-      <div className="relative flex min-h-0 w-full flex-1 flex-col overflow-hidden bg-(--color-bg)">
+  const landingBusy = isLoading || dockLocked;
+
+  const composerEl =
+    portalHost &&
+    createPortal(
+      <ChatComposer
+        ref={barRef}
+        mode={showThread ? "thread" : "landing"}
+        onSend={showThread ? onSend : beginSend}
+        onCancel={onCancel}
+        disabled={showThread ? isLoading : landingBusy}
+        isSending={isLoading}
+        sessionKey={landingSessionKey}
+        composerFill={composerFill}
+      />,
+      portalHost
+    );
+
+  return (
+    <div className="relative flex min-h-0 w-full flex-1 flex-col overflow-hidden bg-(--color-bg)">
+      {showThread ? (
         <MessageList
           messages={messages}
           isLoading={isLoading}
@@ -345,102 +384,73 @@ export default function ChatPanel({
           onHighlightSource={onHighlightSource}
           selectedSourceId={selectedSourceId}
           onSelectSource={onSelectSource}
+          onFillComposer={onFillComposer}
           enterReady={threadEntered}
           evidenceOpen={!!selectedSourceId}
         />
-        <ComposerDock>
-          <ChatComposer
-            mode="thread"
-            onSend={onSend}
-            onCancel={onCancel}
-            disabled={isLoading}
-            isSending={isLoading}
-          />
-        </ComposerDock>
-      </div>
-    );
-  }
-
-  const landingBusy = isLoading || dockLocked;
-
-  return (
-    <div className="sleek-scrollbar relative flex h-full min-h-0 flex-1 flex-col justify-center overflow-y-auto overflow-x-hidden bg-(--color-bg)">
-      <div className="flex min-h-min flex-col justify-center px-4 py-8 sm:py-10">
-        <div
-          className={`mx-auto flex w-full flex-col gap-8 transition-[max-width] duration-300 ease-out sm:gap-10 ${CHAT_MAX_WIDTH_CLASS}`}
-        >
-          <div
-            className={`origin-top transition-opacity ease-out ${
-              fadeLandingChrome || docked
-                ? "pointer-events-none opacity-0"
-                : "opacity-100"
-            } ${reduceMotion && docked ? "hidden" : ""}`}
-            style={{
-              transitionDuration:
-                fadeLandingChrome || docked
-                  ? `${LANDING_CHROME_FADE_MS}ms`
-                  : "300ms",
-            }}
-          >
-            <TypewriterHeading
-              sessionKey={landingSessionKey}
-              hidden={fadeLandingChrome || docked}
-            />
-          </div>
-
-          <div
-            className={
-              docked
-                ? "pointer-events-none fixed inset-x-0 bottom-0 z-40 flex justify-center bg-linear-to-t from-(--color-bg) via-(--color-bg)/95 to-transparent pb-5 pt-24"
-                : "relative z-30 w-full"
-            }
-          >
+      ) : (
+        <div className="sleek-scrollbar relative flex h-full min-h-0 flex-1 flex-col justify-center overflow-y-auto overflow-x-hidden bg-(--color-bg)">
+          <div className="flex min-h-min flex-col justify-center px-4 py-8 sm:py-10">
             <div
-              className={`pointer-events-auto w-full transition-[max-width,padding,margin] duration-300 ease-out ${
-                docked ? `mx-auto ${CHAT_PAGE_MAX_WIDTH_CLASS} px-4 sm:px-6` : ""
-              }`}
+              className={`mx-auto flex w-full flex-col gap-8 sm:gap-10 ${CHAT_MAX_WIDTH_CLASS}`}
             >
               <div
-                className={`w-full ${
-                  docked
-                    ? `mx-auto ${CHAT_MAX_WIDTH_CLASS} transition-[max-width] duration-300 ease-out`
-                    : ""
-                }`}
+                className={`origin-top transition-opacity ease-out ${
+                  fadeLandingChrome || docked
+                    ? "pointer-events-none opacity-0"
+                    : "opacity-100"
+                } ${reduceMotion && docked ? "hidden" : ""}`}
+                style={{
+                  transitionDuration:
+                    fadeLandingChrome || docked
+                      ? `${LANDING_CHROME_FADE_MS}ms`
+                      : "300ms",
+                }}
               >
-                <ChatComposer
-                  ref={barRef}
-                  mode="landing"
-                  onSend={beginSend}
-                  onCancel={onCancel}
-                  disabled={landingBusy}
-                  isSending={isLoading}
+                <TypewriterHeading
                   sessionKey={landingSessionKey}
+                  hidden={fadeLandingChrome || docked}
+                />
+              </div>
+
+              <div
+                ref={landingHostRef}
+                className={`relative z-30 w-full ${showDock ? "hidden" : ""}`}
+                aria-hidden={showDock}
+              />
+
+              <div
+                className={`overflow-hidden transition-[opacity,max-height] ease-out ${
+                  fadeLandingChrome || docked
+                    ? "pointer-events-none max-h-0 opacity-0"
+                    : "max-h-[2000px] opacity-100"
+                }`}
+                style={{
+                  transitionDuration:
+                    fadeLandingChrome && !docked
+                      ? `${LANDING_CHROME_FADE_MS}ms`
+                      : "300ms",
+                }}
+              >
+                <SuggestionRows
+                  suggestions={LANDING_SUGGESTIONS}
+                  disabled={landingBusy}
+                  onPick={(query) => beginSend(query)}
                 />
               </div>
             </div>
           </div>
-
-          <div
-            className={`overflow-hidden transition-[opacity,max-height] ease-out ${
-              fadeLandingChrome || docked
-                ? "pointer-events-none max-h-0 opacity-0"
-                : "max-h-[2000px] opacity-100"
-            }`}
-            style={{
-              transitionDuration:
-                fadeLandingChrome && !docked
-                  ? `${LANDING_CHROME_FADE_MS}ms`
-                  : "300ms",
-            }}
-          >
-            <SuggestionRows
-              suggestions={LANDING_SUGGESTIONS}
-              disabled={landingBusy}
-              onPick={(query) => beginSend(query)}
-            />
-          </div>
         </div>
-      </div>
+      )}
+
+      {showDock && (
+        <ComposerDock
+          muteLayoutTransition={dockAnimating}
+          innerRef={dockHostRef}
+        />
+      )}
+
+      {composerEl}
     </div>
   );
 }

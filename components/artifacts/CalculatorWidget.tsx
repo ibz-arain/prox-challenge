@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Calculator } from "lucide-react";
 
 interface CalculatorWidgetProps {
@@ -88,6 +88,97 @@ function DutyCycleCalculator() {
         {weldTime.toFixed(1)} minutes, then need {coolTime.toFixed(1)} minutes
         of cool-down in each 10-minute period.
       </p>
+    </div>
+  );
+}
+
+function ThermalRestCalculator() {
+  const [dutyCycle, setDutyCycle] = useState(30);
+  const cycleDuration = 10;
+  const weldTime = (dutyCycle / 100) * cycleDuration;
+  const coolTime = cycleDuration - weldTime;
+
+  return (
+    <div className="space-y-4">
+      <p className="text-xs text-neutral-400 leading-relaxed">
+        Use this to think about how long the machine can run before it needs
+        idle time to shed heat—always follow the duty cycle numbers from the
+        manual for your amperage and input voltage.
+      </p>
+      <div>
+        <label className="text-xs font-medium text-neutral-400 block mb-1">
+          Duty cycle (example): {dutyCycle}%
+        </label>
+        <input
+          type="range"
+          min={10}
+          max={60}
+          step={5}
+          value={dutyCycle}
+          onChange={(e) => setDutyCycle(Number(e.target.value))}
+          className="w-full accent-brand"
+        />
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="p-3 rounded-xl bg-sky-950/40 border border-sky-600/30">
+          <div className="text-xs font-medium text-neutral-400">Arc-on time</div>
+          <div className="text-lg font-semibold text-sky-300 leading-snug">
+            {weldTime.toFixed(1)} min
+          </div>
+        </div>
+        <div className="p-3 rounded-xl bg-neutral-900/80 border border-neutral-600/40">
+          <div className="text-xs font-medium text-neutral-400">Rest / cool</div>
+          <div className="text-lg font-semibold text-neutral-200 leading-snug">
+            {coolTime.toFixed(1)} min
+          </div>
+        </div>
+      </div>
+      <p className="text-xs text-neutral-400 leading-relaxed">
+        In each {cycleDuration}-minute window: about {weldTime.toFixed(1)} min
+        under load, then about {coolTime.toFixed(1)} min without welding so
+        the inverter can cool.
+      </p>
+    </div>
+  );
+}
+
+function GasFlowCalculator() {
+  const [cfh, setCfh] = useState(25);
+
+  return (
+    <div className="space-y-4">
+      <p className="text-xs text-neutral-400 leading-relaxed">
+        Shielding gas is measured in cubic feet per hour (CFH). The manual
+        lists the flow rates to use—this slider is only for building intuition.
+      </p>
+      <div>
+        <label className="text-xs font-medium text-neutral-400 block mb-1">
+          Flow rate: {cfh} CFH
+        </label>
+        <input
+          type="range"
+          min={10}
+          max={45}
+          step={1}
+          value={cfh}
+          onChange={(e) => setCfh(Number(e.target.value))}
+          className="w-full accent-brand"
+        />
+        <div className="flex justify-between text-xs text-neutral-500">
+          <span>10 CFH</span>
+          <span>45 CFH</span>
+        </div>
+      </div>
+      <div className="p-3 rounded-xl border border-cyan-600/25 bg-cyan-950/30 ring-1 ring-cyan-500/15">
+        <div className="text-xs font-medium text-neutral-400 mb-1">
+          Rough reference
+        </div>
+        <p className="text-sm text-neutral-200 leading-snug">
+          Many short-circuit MIG setups fall in roughly{" "}
+          <strong className="text-cyan-200">18–30 CFH</strong> depending on
+          nozzle size, draft, and joint—confirm on the chart in the manual.
+        </p>
+      </div>
     </div>
   );
 }
@@ -199,11 +290,36 @@ export default function CalculatorWidget({
   content,
 }: CalculatorWidgetProps) {
   let calcType = "duty-cycle";
+  let isValidPayload = true;
   try {
     const parsed = JSON.parse(content);
     calcType = parsed.type || "duty-cycle";
   } catch {
-    /* fallback */
+    isValidPayload = false;
+  }
+
+  let body: ReactNode;
+  if (!isValidPayload) {
+    body = (
+      <pre className="whitespace-pre-wrap text-sm leading-relaxed text-neutral-300">
+        {content}
+      </pre>
+    );
+  } else {
+    switch (calcType) {
+      case "settings-configurator":
+        body = <SettingsConfigurator />;
+        break;
+      case "gas-flow":
+        body = <GasFlowCalculator />;
+        break;
+      case "thermal-rest":
+        body = <ThermalRestCalculator />;
+        break;
+      case "duty-cycle":
+      default:
+        body = <DutyCycleCalculator />;
+    }
   }
 
   return (
@@ -212,13 +328,7 @@ export default function CalculatorWidget({
         <Calculator size={14} />
         {title}
       </div>
-      <div className="p-4">
-        {calcType === "settings-configurator" ? (
-          <SettingsConfigurator />
-        ) : (
-          <DutyCycleCalculator />
-        )}
-      </div>
+      <div className="p-4">{body}</div>
     </div>
   );
 }

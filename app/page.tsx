@@ -16,6 +16,8 @@ import type {
   StreamEvent,
 } from "@/lib/types";
 
+const DEBUG_PREFIX = "[omni-chat-ui]";
+
 function makeId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -59,6 +61,11 @@ export default function Home() {
   const [isHydrated, setIsHydrated] = useState(false);
   const clearTrailTimeoutRef = useRef<number | null>(null);
   const streamAbortRef = useRef<AbortController | null>(null);
+  const composerFillSeqRef = useRef(0);
+  const [composerFill, setComposerFill] = useState<{
+    id: number;
+    text: string;
+  } | null>(null);
 
   const selectedSource = useMemo(
     () => buildSelectedSourceSnapshot(messages, selectedSourceId),
@@ -119,6 +126,7 @@ export default function Home() {
     setStreamComplete(false);
     setHighlightedSourceId(null);
     setSelectedSourceId(null);
+    setComposerFill(null);
     if (clearTrailTimeoutRef.current) {
       window.clearTimeout(clearTrailTimeoutRef.current);
       clearTrailTimeoutRef.current = null;
@@ -133,13 +141,27 @@ export default function Home() {
     setHighlightedSourceId(source.sourceId);
   }, []);
 
+  const fillComposer = useCallback((text: string) => {
+    composerFillSeqRef.current += 1;
+    setComposerFill({
+      id: composerFillSeqRef.current,
+      text,
+    });
+  }, []);
+
   const sendMessage = useCallback(
-    async (content: string, image?: string) => {
+    async (content: string, image?: string, imageMimeType?: string) => {
+      console.log(DEBUG_PREFIX, "sendMessage", {
+        contentPreview: content.slice(0, 160),
+        hasImage: Boolean(image),
+        imageMimeType: imageMimeType ?? null,
+      });
       const userMessage: ChatMessage = {
         id: makeId("user"),
         role: "user",
         content,
         image,
+        imageMimeType,
       };
       const newMessages = [...messages, userMessage];
       const assistantMessageIndex = newMessages.length;
@@ -162,6 +184,20 @@ export default function Home() {
       streamAbortRef.current?.abort();
       const ac = new AbortController();
       streamAbortRef.current = ac;
+
+      const thinkingAccumulator: string[] = [];
+
+      const updateAssistantMessage = (updates: Partial<ChatMessage>) => {
+        setMessages((prev) => {
+          if (!prev[assistantMessageIndex]) return prev;
+          const next = [...prev];
+          next[assistantMessageIndex] = {
+            ...next[assistantMessageIndex],
+            ...updates,
+          };
+          return next;
+        });
+      };
 
       try {
         const response = await fetch("/api/chat", {
@@ -197,20 +233,10 @@ export default function Home() {
         let textStarted = false;
         let flushTimeoutId: number | null = null;
 
-        const updateAssistantMessage = (updates: Partial<ChatMessage>) => {
-          setMessages((prev) => {
-            if (!prev[assistantMessageIndex]) return prev;
-            const next = [...prev];
-            next[assistantMessageIndex] = {
-              ...next[assistantMessageIndex],
-              ...updates,
-            };
-            return next;
-          });
-        };
-
         const appendStatus = (line: string) => {
-          setStatusTrail((prev) => [...prev, line]);
+          thinkingAccumulator.push(line);
+          setStatusTrail([...thinkingAccumulator]);
+          updateAssistantMessage({ thinkingSteps: [...thinkingAccumulator] });
         };
 
         const flushText = () => {
@@ -223,11 +249,16 @@ export default function Home() {
 
         const scheduleTextFlush = () => {
           if (flushTimeoutId !== null) return;
-          flushTimeoutId = window.setTimeout(flushText, 32);
+          flushTimeoutId = window.setTimeout(flushText, 16);
         };
 
         const applyEvent = (payload: StreamEvent) => {
           const eventType = payload.type;
+          console.log(DEBUG_PREFIX, "stream event", {
+            type: eventType,
+            hasDelta: typeof payload.delta === "string" && payload.delta.length > 0,
+            hasText: typeof payload.text === "string" && payload.text.length > 0,
+          });
           if (eventType === "text_delta") {
             const delta = typeof payload.delta === "string" ? payload.delta : "";
             if (!textStarted && delta.length > 0) {
@@ -280,6 +311,10 @@ export default function Home() {
           if (eventType === "artifact") {
             const item = payload.data as Artifact | undefined;
             if (!item || typeof item.title !== "string") return;
+            console.log(DEBUG_PREFIX, "artifact received", {
+              type: item.type,
+              title: item.title,
+            });
             artifacts = [...artifacts, item];
             updateAssistantMessage({ artifacts });
             return;
@@ -321,6 +356,12 @@ export default function Home() {
             flushText();
             receivedDone = true;
             setStreamComplete(true);
+            console.log(DEBUG_PREFIX, "stream complete", {
+              finalTextLength: assistantText.length,
+              citationCount: citations.length,
+              artifactCount: artifacts.length,
+              pageImageCount: pageImages.length,
+            });
           }
         };
 
@@ -359,17 +400,30 @@ export default function Home() {
           (error instanceof Error && error.name === "AbortError");
         if (aborted) {
           setStreamComplete(true);
+          if (thinkingAccumulator.length > 0) {
+            updateAssistantMessage({
+              thinkingSteps: [...thinkingAccumulator],
+            });
+          }
           return;
         }
 
         const errMsg =
           error instanceof Error ? error.message : "Something went wrong";
+        console.error(DEBUG_PREFIX, "stream error", {
+          error: errMsg,
+        });
         setMessages((prev) => {
           const next = [...prev];
+          const prevAssistant = next[assistantMessageIndex];
           const fallbackMessage: ChatMessage = {
             id: assistantMessageId,
             role: "assistant",
             content: `Sorry, I encountered an error: ${errMsg}. Check your ANTHROPIC_API_KEY in .env and make sure the manuals exist under files/.`,
+            thinkingSteps:
+              thinkingAccumulator.length > 0
+                ? [...thinkingAccumulator]
+                : prevAssistant?.thinkingSteps,
           };
 
           if (
@@ -415,6 +469,8 @@ export default function Home() {
               onSelectSource={handleSelectSource}
               onSend={sendMessage}
               onCancel={cancelStream}
+              onFillComposer={fillComposer}
+              composerFill={composerFill}
             />
           </div>
         </div>

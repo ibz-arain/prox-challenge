@@ -20,11 +20,13 @@ interface AssistantMessageProps {
   onHighlightSource: (sourceId: string) => void;
   selectedSourceId?: string | null;
   onSelectSource: (source: SelectedSource) => void;
+  onFillComposer?: (text: string) => void;
 }
 
 function renderTextWithInlineCitations(
   text: string,
-  onCitationClick: (pageNumber: number) => void
+  onCitationClick: (pageNumber: number) => void,
+  evidenceUiReady: boolean
 ): ReactNode[] {
   const nodes: ReactNode[] = [];
   const regex = /(\[p\.(\d+)\]|\((?:page|p\.)\s*(\d+)\)|\b(?:page|p\.)\s*(\d+)\b)/gi;
@@ -38,11 +40,20 @@ function renderTextWithInlineCitations(
     const pageNumber = Number(match[2] ?? match[3] ?? match[4]);
     if (Number.isFinite(pageNumber)) {
       nodes.push(
-        <InlineCitation
-          key={`citation-${match.index}-${pageNumber}`}
-          pageNumber={pageNumber}
-          onClick={onCitationClick}
-        />
+        evidenceUiReady ? (
+          <InlineCitation
+            key={`citation-${match.index}-${pageNumber}`}
+            pageNumber={pageNumber}
+            onClick={onCitationClick}
+          />
+        ) : (
+          <span
+            key={`citation-${match.index}-${pageNumber}`}
+            className="text-neutral-500"
+          >
+            p.{pageNumber}
+          </span>
+        )
       );
     } else {
       nodes.push(match[0]);
@@ -59,16 +70,24 @@ function renderTextWithInlineCitations(
 function decorateInlineCitations(
   node: ReactNode,
   onCitationClick: (pageNumber: number) => void,
+  evidenceUiReady: boolean,
   keyPrefix = "node"
 ): ReactNode {
   if (typeof node === "string") {
-    return renderTextWithInlineCitations(node, onCitationClick).map((item, index) => (
-      <React.Fragment key={`${keyPrefix}-${index}`}>{item}</React.Fragment>
-    ));
+    return renderTextWithInlineCitations(node, onCitationClick, evidenceUiReady).map(
+      (item, index) => (
+        <React.Fragment key={`${keyPrefix}-${index}`}>{item}</React.Fragment>
+      )
+    );
   }
   if (Array.isArray(node)) {
     return node.map((child, index) =>
-      decorateInlineCitations(child, onCitationClick, `${keyPrefix}-${index}`)
+      decorateInlineCitations(
+        child,
+        onCitationClick,
+        evidenceUiReady,
+        `${keyPrefix}-${index}`
+      )
     );
   }
   if (React.isValidElement<{ children?: ReactNode }>(node) && node.props?.children) {
@@ -77,6 +96,7 @@ function decorateInlineCitations(
       children: decorateInlineCitations(
         node.props.children,
         onCitationClick,
+        evidenceUiReady,
         `${keyPrefix}-child`
       ),
     });
@@ -105,6 +125,7 @@ function AssistantMessage({
   onHighlightSource,
   selectedSourceId,
   onSelectSource,
+  onFillComposer,
 }: AssistantMessageProps) {
   const messageId = getMessageId(message, "assistant-message");
   const citations = message.citations ?? [];
@@ -114,7 +135,10 @@ function AssistantMessage({
     ? sanitizeStreamingMarkdown(message.content)
     : message.content;
 
+  const evidenceUiReady = streamComplete;
+
   const onCitationClick = (pageNumber: number) => {
+    if (!evidenceUiReady) return;
     const target = citations.find((citation) => citation.pageNumber === pageNumber);
     if (!target) return;
     const sourceId = getSourceCardId(messageId, target);
@@ -154,7 +178,12 @@ function AssistantMessage({
               components={{
                 p: ({ children }) => (
                   <p className="mb-2 last:mb-0 text-neutral-300">
-                    {decorateInlineCitations(children, onCitationClick, "paragraph")}
+                    {decorateInlineCitations(
+                      children,
+                      onCitationClick,
+                      evidenceUiReady,
+                      "paragraph"
+                    )}
                   </p>
                 ),
                 strong: ({ children }) => (
@@ -204,20 +233,17 @@ function AssistantMessage({
             >
               {displayContent}
             </ReactMarkdown>
-            {isStreaming && (
-              <span
-                className="ml-0.5 inline-block h-[1em] w-0.5 animate-pulse rounded-sm bg-brand/80 align-[-0.12em] motion-reduce:animate-none"
-                aria-hidden
-              />
-            )}
           </div>
         </div>
 
-        {artifacts.length > 0 && (
+        {evidenceUiReady && artifacts.length > 0 && (
           <div className="space-y-3 border-t border-white/6 pt-3">
             {artifacts.map((artifact, index) => (
               <ArtifactContainer key={`${artifact.title}-${index}`}>
-                <ArtifactRenderer artifact={artifact} />
+                <ArtifactRenderer
+                  artifact={artifact}
+                  onFillComposer={onFillComposer}
+                />
               </ArtifactContainer>
             ))}
           </div>
@@ -227,7 +253,7 @@ function AssistantMessage({
           messageId={messageId}
           citations={citations}
           pageImages={pageImages}
-          visible={citations.length > 0}
+          visible={evidenceUiReady && citations.length > 0}
           highlightedSourceId={highlightedSourceId}
           selectedSourceId={selectedSourceId}
           onSelectSource={onSelectSource}
