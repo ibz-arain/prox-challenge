@@ -1,8 +1,10 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
 import type { Citation, PageImage } from "@/lib/types";
-import { buildPageImageFromCitation } from "@/lib/evidence";
+import { buildPageImageUrl } from "@/lib/evidence";
 import { sanitizeExcerptForDisplay } from "@/lib/citationExcerpt";
+import { fetchPagePreviewPng } from "@/lib/fetchPagePreview";
 
 interface SourceCardProps {
   citation: Citation;
@@ -23,10 +25,46 @@ export default function SourceCard({
   anchorId,
   active = false,
 }: SourceCardProps) {
-  const preview = buildPageImageFromCitation(citation, pageImage);
-  const imageSrc = preview.imageUrl ?? preview.url;
   const caption =
     sanitizeExcerptForDisplay(citation.excerpt, 110) || citation.excerpt;
+
+  const fallbackSrc = useMemo(
+    () => buildPageImageUrl(citation.source, citation.pageNumber),
+    [citation.source, citation.pageNumber]
+  );
+
+  const highlightThumb = useMemo(() => {
+    const raw = citation.excerpt || pageImage?.excerpt || "";
+    if (!raw.trim()) return "";
+    const cleaned = sanitizeExcerptForDisplay(raw, 600) || raw;
+    return cleaned.trim().slice(0, 800);
+  }, [citation.excerpt, pageImage?.excerpt]);
+
+  const [imageSrc, setImageSrc] = useState(fallbackSrc);
+
+  useEffect(() => {
+    setImageSrc(fallbackSrc);
+    let blobUrl: string | null = null;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const blob = await fetchPagePreviewPng(
+          citation.source,
+          citation.pageNumber,
+          highlightThumb || undefined
+        );
+        if (cancelled) return;
+        blobUrl = URL.createObjectURL(blob);
+        setImageSrc(blobUrl);
+      } catch {
+        if (!cancelled) setImageSrc(fallbackSrc);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      if (blobUrl) URL.revokeObjectURL(blobUrl);
+    };
+  }, [citation.source, citation.pageNumber, highlightThumb, fallbackSrc]);
 
   return (
     <button

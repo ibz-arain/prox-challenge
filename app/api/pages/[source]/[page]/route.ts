@@ -7,14 +7,11 @@ import {
   renderPageToPng,
 } from "@/lib/ingest/page-renderer";
 
-export async function GET(
-  req: NextRequest,
-  { params }: { params: Promise<{ source: string; page: string }> }
-) {
-  const { source, page } = await params;
-  const pageNum = parseInt(page, 10);
-  const highlightText = req.nextUrl.searchParams.get("highlight")?.trim() || undefined;
-
+async function buildPagePngResponse(
+  source: string,
+  pageNum: number,
+  highlightText: string | undefined
+): Promise<Response> {
   if (isNaN(pageNum)) {
     return Response.json({ error: "Invalid page number" }, { status: 400 });
   }
@@ -67,4 +64,34 @@ export async function GET(
         : "public, max-age=86400",
     },
   });
+}
+
+export async function GET(
+  req: NextRequest,
+  { params }: { params: Promise<{ source: string; page: string }> }
+) {
+  const { source, page } = await params;
+  const pageNum = parseInt(page, 10);
+  const highlightText = req.nextUrl.searchParams.get("highlight")?.trim() || undefined;
+  return buildPagePngResponse(source, pageNum, highlightText);
+}
+
+export async function POST(
+  req: NextRequest,
+  { params }: { params: Promise<{ source: string; page: string }> }
+) {
+  const { source, page } = await params;
+  const pageNum = parseInt(page, 10);
+
+  let highlightText: string | undefined;
+  try {
+    const body = (await req.json()) as { highlight?: unknown };
+    if (typeof body.highlight === "string") {
+      highlightText = body.highlight.trim() || undefined;
+    }
+  } catch {
+    /* empty body */
+  }
+
+  return buildPagePngResponse(source, pageNum, highlightText);
 }

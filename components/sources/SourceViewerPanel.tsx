@@ -5,6 +5,7 @@ import { ExternalLink, LoaderCircle, ScanSearch, X } from "lucide-react";
 import type { SelectedSource } from "@/lib/types";
 import { buildPageImageUrl } from "@/lib/evidence";
 import { sanitizeExcerptForDisplay } from "@/lib/citationExcerpt";
+import { fetchPagePreviewPng } from "@/lib/fetchPagePreview";
 
 interface SourceViewerPanelProps {
   source: SelectedSource;
@@ -62,21 +63,56 @@ export default function SourceViewerPanel({
     source.citation.excerpt || source.pageImage?.excerpt || "No excerpt available.";
   const supportingExcerpt =
     sanitizeExcerptForDisplay(rawExcerpt, 620) || rawExcerpt;
-  const imageSrc = useMemo(() => {
-    if (source.pageImage?.imageUrl) return source.pageImage.imageUrl;
-    if (source.pageImage?.url) return source.pageImage.url;
-    return buildPageImageUrl(source.citation.source, source.citation.pageNumber);
-  }, [
-    source.citation.pageNumber,
-    source.citation.source,
-    source.pageImage?.imageUrl,
-    source.pageImage?.url,
-  ]);
+
+  /** Sent in POST body (not query string) so long excerpts work on Vercel. */
+  const highlightForPdf = useMemo(() => {
+    const base = source.citation.excerpt || source.pageImage?.excerpt || "";
+    if (!base.trim()) return "";
+    const cleaned = sanitizeExcerptForDisplay(base, 3500) || base;
+    return cleaned.trim().slice(0, 4000);
+  }, [source.citation.excerpt, source.pageImage?.excerpt]);
+
+  const fallbackSrc = useMemo(
+    () => buildPageImageUrl(source.citation.source, source.citation.pageNumber),
+    [source.citation.pageNumber, source.citation.source]
+  );
+
+  const [imageSrc, setImageSrc] = useState<string>(fallbackSrc);
   const [imageState, setImageState] = useState<"loading" | "ready" | "error">("loading");
 
   useEffect(() => {
     setImageState("loading");
-  }, [imageSrc]);
+    setImageSrc(fallbackSrc);
+    let blobUrl: string | null = null;
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const blob = await fetchPagePreviewPng(
+          source.citation.source,
+          source.citation.pageNumber,
+          highlightForPdf || undefined
+        );
+        if (cancelled) return;
+        blobUrl = URL.createObjectURL(blob);
+        setImageSrc(blobUrl);
+      } catch {
+        if (!cancelled) {
+          setImageSrc(fallbackSrc);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      if (blobUrl) URL.revokeObjectURL(blobUrl);
+    };
+  }, [
+    source.citation.source,
+    source.citation.pageNumber,
+    highlightForPdf,
+    fallbackSrc,
+  ]);
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col bg-neutral-950/96 backdrop-blur-xl">
@@ -143,7 +179,8 @@ export default function SourceViewerPanel({
                 {renderHighlightedExcerpt(supportingExcerpt)}
               </p>
               <p className="mt-3 text-xs leading-5 text-neutral-500">
-                The image is the full manual page; the excerpt above highlights key phrases in text.
+                Orange overlays on the page image match the excerpt when the PDF text layer lines
+                up; the text above always reflects the citation.
               </p>
             </div>
 

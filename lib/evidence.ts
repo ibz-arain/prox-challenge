@@ -1,8 +1,8 @@
 import type { Citation, PageImage } from "./types";
 
 /**
- * Use for <img src> only. Long ?highlight= query strings (URL-encoded excerpts)
- * exceed Vercel/CDN limits and return 404. Excerpt highlighting stays in UI text.
+ * Plain GET URL (no highlight). For PDF text overlays on the image, the client
+ * uses `fetchPagePreviewPng` (POST body) — see `lib/fetchPagePreview.ts`.
  */
 export function buildPageImageUrl(source: string, pageNumber: number): string {
   return `/api/pages/${encodeURIComponent(source)}/${pageNumber}`;
